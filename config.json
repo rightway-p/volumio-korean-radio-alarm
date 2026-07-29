@@ -23,6 +23,10 @@
     "type": "number",
     "value": 45
   },
+  "alarm_1_action": {
+    "type": "string",
+    "value": "play"
+  },
   "alarm_1_monday": {
     "type": "boolean",
     "value": true

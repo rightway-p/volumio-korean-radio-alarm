@@ -123,6 +123,8 @@ test('getUIConfig renders actions section plus dynamic stored alarms', async () 
   var slot1Hour = null;
   var slot1Minute = null;
   var slot1MinuteOptions = null;
+  var slot1Action = null;
+  var slot1ActionOptions = null;
   var section2Minute = null;
   var section2Delete = null;
   var section1Delete = null;
@@ -135,6 +137,10 @@ test('getUIConfig renders actions section plus dynamic stored alarms', async () 
     if (item.id === 'alarm_1_minute') {
       slot1Minute = item.value;
       slot1MinuteOptions = item.options;
+    }
+    if (item.id === 'alarm_1_action') {
+      slot1Action = item.value;
+      slot1ActionOptions = item.options;
     }
     if (item.id === 'alarm_1_delete') {
       section1Delete = item;
@@ -154,6 +160,10 @@ test('getUIConfig renders actions section plus dynamic stored alarms', async () 
   assert.strictEqual(section1.id, 'alarm_settings_1');
   assert.strictEqual(section2.id, 'alarm_settings_2');
   assert.strictEqual(slot1Hour, 6);
+  assert.strictEqual(slot1Action, 'play');
+  assert.strictEqual(slot1ActionOptions.length, 2);
+  assert.deepStrictEqual(slot1ActionOptions[0].value, 'play');
+  assert.deepStrictEqual(slot1ActionOptions[1].value, 'stop');
   assert.strictEqual(slot1Minute, 15);
   assert.strictEqual(slot1MinuteOptions.length, 60);
   assert.strictEqual(section2Minute, 10);
@@ -206,8 +216,9 @@ test('fresh/default stored alarm ids only include alarm_1', async () => {
   assert.strictEqual(ui.sections.length, 2);
   assert.strictEqual(ui.sections[0].id, 'alarm_actions');
   assert.strictEqual(ui.sections[1].id, 'alarm_settings_1');
-  assert.strictEqual(ui.sections[1].content[1].id, 'alarm_1_hour');
-  assert.strictEqual(ui.sections[1].content[1].value, 7);
+  assert.strictEqual(ui.sections[1].content.some(function (item) {
+    return item.id === 'alarm_1_hour' && item.value === 7;
+  }), true);
 });
 
 test('explicit empty alarm_ids keeps only add action and no alarm sections', async () => {
@@ -400,6 +411,9 @@ test('addAlarm appends next numeric slot, persists config, and reschedules', () 
     assert.ok(setCalls.some(function (entry) {
       return entry[0] === 'alarm_2_enabled' && entry[1] === false;
     }));
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_2_action' && entry[1] === 'play';
+    }));
     assert.strictEqual(toasts.length, 1);
   });
 });
@@ -444,7 +458,8 @@ test('saving a slot not yet in alarm_ids persists slot id and keeps slot values'
 
   return plugin.saveAlarm({
     value: {
-      alarm_2_hour: 8
+      alarm_2_hour: 8,
+      alarm_2_action: 'stop'
     }
   }).then(function (result) {
     assert.strictEqual(result.success, true);
@@ -455,6 +470,9 @@ test('saving a slot not yet in alarm_ids persists slot id and keeps slot values'
     }));
     assert.ok(setCalls.some(function (entry) {
       return entry[0] === 'alarm_2_hour' && entry[1] === 8;
+    }));
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_2_action' && entry[1] === 'stop';
     }));
   });
 });
@@ -528,6 +546,7 @@ test('deleteAlarm removes slot from storage, deletes slot config keys, and resch
     }));
     var expectedDeleted = [
       'alarm_2_enabled',
+      'alarm_2_action',
       'alarm_2_hour',
       'alarm_2_minute',
       'alarm_2_station_uri',
@@ -1387,4 +1406,175 @@ test('clearAddPlayTrack uses realUri when uri is missing', async () => {
   assert.strictEqual(syncStateCalls[0][0].isStreaming, true);
   assert.strictEqual(syncStateCalls[0][0].trackType, 'webradio');
   assert.strictEqual(syncStateCalls[0][0].duration, 0);
+});
+
+test('legacy/missing action defaults to play behavior at alarm fire', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+  var volumeCalls = [];
+  var playCalls = [];
+
+  plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1',
+    alarm_1_enabled: true,
+    alarm_1_hour: 7,
+    alarm_1_minute: 0,
+    alarm_1_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_1_volume: 45,
+    alarm_1_monday: false,
+    alarm_1_tuesday: false,
+    alarm_1_wednesday: false,
+    alarm_1_thursday: false,
+    alarm_1_friday: false,
+    alarm_1_saturday: false,
+    alarm_1_sunday: false
+  });
+
+  plugin._setAlarmVolume = function (volume) {
+    volumeCalls.push(volume);
+    return libQ.resolve();
+  };
+  plugin.clearAddPlayTrack = function (track) {
+    playCalls.push(track.uri);
+    return libQ.resolve(true);
+  };
+
+  var result = await plugin._onAlarmFire('alarm_1');
+
+  assert.strictEqual(result, true);
+  assert.deepStrictEqual(volumeCalls, [45]);
+  assert.strictEqual(playCalls.length, 1);
+  assert.strictEqual(playCalls[0], 'https://example.com/stream');
+});
+
+test('stop action only stops playback and does not start station', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+  var stopCalls = 0;
+  var volumeCalls = [];
+  var playCalls = [];
+
+  plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1',
+    alarm_1_enabled: true,
+    alarm_1_action: 'stop',
+    alarm_1_hour: 7,
+    alarm_1_minute: 0,
+    alarm_1_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_1_volume: 45,
+    alarm_1_monday: false,
+    alarm_1_tuesday: false,
+    alarm_1_wednesday: false,
+    alarm_1_thursday: false,
+    alarm_1_friday: false,
+    alarm_1_saturday: false,
+    alarm_1_sunday: false
+  });
+
+  plugin._setAlarmVolume = function (volume) {
+    volumeCalls.push(volume);
+    return libQ.resolve();
+  };
+  plugin.clearAddPlayTrack = function () {
+    playCalls.push(true);
+    return libQ.resolve();
+  };
+  plugin._stopPlayback = function () {
+    stopCalls += 1;
+    return libQ.resolve(true);
+  };
+
+  var result = await plugin._onAlarmFire('alarm_1');
+
+  assert.strictEqual(result, true);
+  assert.strictEqual(stopCalls, 1);
+  assert.strictEqual(volumeCalls.length, 0);
+  assert.strictEqual(playCalls.length, 0);
+});
+
+test('_stopPlayback forces stopped state sync when mpd state is stale', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+
+  var sendCalls = [];
+  var syncStateCalls = [];
+
+  plugin.mpdPlugin = {
+    sendMpdCommand: function (command, args) {
+      sendCalls.push([command, args]);
+      return libQ.resolve();
+    },
+    getState: function () {
+      return libQ.resolve({
+        status: 'playing',
+        isStreaming: true,
+        service: 'mpd',
+        uri: 'https://stale.example.com/stream',
+        path: 'https://stale.example.com/stream',
+        title: 'stale title',
+        trackType: 'webradio',
+        duration: 999,
+        album: 'Korean Radio',
+        artist: 'KBS',
+        stationUri: 'korean_radio_alarm://station/classic',
+        pluginUri: 'korean_radio_alarm://station/classic'
+      });
+    }
+  };
+
+  plugin.commandRouter = {
+    stateMachine: {
+      syncState: function (state, service) {
+        syncStateCalls.push([state, service]);
+        return libQ.resolve();
+      }
+    }
+  };
+
+  await plugin._stopPlayback();
+
+  assert.strictEqual(sendCalls.length, 1);
+  assert.strictEqual(sendCalls[0][0], 'stop');
+  assert.deepStrictEqual(sendCalls[0][1], []);
+  assert.strictEqual(syncStateCalls.length, 1);
+  assert.strictEqual(syncStateCalls[0][1], 'mpd');
+  assert.strictEqual(syncStateCalls[0][0].status, 'stop');
+  assert.strictEqual(syncStateCalls[0][0].isStreaming, false);
+  assert.strictEqual(syncStateCalls[0][0].uri, 'https://stale.example.com/stream');
+});
+
+test('migrated dynamic slot action stop is treated as meaningful while play action is not', () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+
+  var migratedWithStop = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+
+  plugin.configManager = createConfigManager({
+    alarm_2_action: 'stop'
+  });
+  migratedWithStop.configManager = createConfigManager({
+    alarm_2_action: 'play'
+  });
+
+  var stopIds = plugin._getStoredAlarmIds();
+  var playIds = migratedWithStop._getStoredAlarmIds();
+
+  assert.deepStrictEqual(stopIds, ['alarm_1', 'alarm_2']);
+  assert.deepStrictEqual(playIds, ['alarm_1']);
 });

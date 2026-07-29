@@ -20,6 +20,7 @@ var KBS_PLAY_API_URL_BASE = 'https://static.api.kbs.co.kr/play/1.2/live/channel/
 var KBS_PLAY_API_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwbGF0Zm9ybUlkIjoia2JzLWhvbWUiLCJ1c2VySWQiOiIiLCJkYXRhIjoiIiwic2NvcGUiOlsiZGVmYXVsdCIsImFkbWluIl0sInRva2VuRXhwaXJlVGltZSI6MjIyNDkxMTMwODIwM30.hb4K_Wn2ekzNO84xfAOrPnj2OyAeRt7HgSr2TzgQvJQ';
 var STREAM_RESOLVER_CACHE_TTL_MS = 20 * 60 * 1000;
 var WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+var ALARM_DEFAULT_ACTION = 'play';
 var ALARM_SLOT_ID_REGEXP = /^alarm_(\d+)$/;
 var ALARM_SLOT_FIELD_REGEXP = /^alarm_(\d+)_(.+)$/;
 
@@ -177,6 +178,10 @@ function alarmSlotLabelFor(slotId) {
 
 function buildAlarmSection(slotId, slotIndex, alarmConfig, stationOptions, hourOptions, minuteOptions, volumeOptions) {
   var keys = alarmSlotConfigKeys(slotId);
+  var actionOptions = [
+    { value: 'play', label: 'TRANSLATE.ALARM.ACTION_PLAY' },
+    { value: 'stop', label: 'TRANSLATE.ALARM.ACTION_STOP' }
+  ];
 
   return {
     id: 'alarm_settings_' + slotIndex,
@@ -190,10 +195,17 @@ function buildAlarmSection(slotId, slotIndex, alarmConfig, stationOptions, hourO
     },
     saveButton: {
       label: 'TRANSLATE.BUTTON.SAVE',
-      data: [keys.enabled, keys.hour, keys.minute, keys.station, keys.volume, keys.monday, keys.tuesday, keys.wednesday, keys.thursday, keys.friday, keys.saturday, keys.sunday]
+      data: [keys.enabled, keys.action, keys.hour, keys.minute, keys.station, keys.volume, keys.monday, keys.tuesday, keys.wednesday, keys.thursday, keys.friday, keys.saturday, keys.sunday]
     },
     content: [
       { type: 'boolean', element: 'switch', id: keys.enabled, label: 'TRANSLATE.ALARM.ENABLED', value: !!alarmConfig.alarm_enabled },
+      {
+        element: 'select',
+        id: keys.action,
+        label: 'TRANSLATE.ALARM.ACTION',
+        value: alarmConfig.alarm_action || ALARM_DEFAULT_ACTION,
+        options: actionOptions
+      },
       { element: 'select', id: keys.hour, label: 'TRANSLATE.ALARM.HOUR', value: alarmConfig.alarm_hour, options: hourOptions },
       { element: 'select', id: keys.minute, label: 'TRANSLATE.ALARM.MINUTE', value: alarmConfig.alarm_minute, options: minuteOptions },
       { element: 'select', id: keys.station, label: 'TRANSLATE.ALARM.STATION', value: alarmConfig.alarm_station_uri, options: stationOptions },
@@ -245,6 +257,7 @@ function defaultAlarmConfig(alarmSlot, catalog) {
   var defaultStation = AlarmHelpers.firstStationUriFromCatalog(catalog) || '';
   return {
     alarm_enabled: false,
+    alarm_action: ALARM_DEFAULT_ACTION,
     alarm_hour: 7,
     alarm_minute: 0,
     alarm_station_uri: defaultStation,
@@ -267,6 +280,7 @@ function defaultAlarmConfigForMigration(slotId, catalog) {
 
   return {
     alarm_enabled: false,
+    alarm_action: ALARM_DEFAULT_ACTION,
     alarm_hour: defaults.alarm_hour,
     alarm_minute: defaults.alarm_minute,
     alarm_station_uri: defaults.alarm_station_uri,
@@ -293,6 +307,14 @@ function normalizeAlarmSlotId(slotId) {
   }
 
   return null;
+}
+
+function buildActionValue(value) {
+  var action = typeof value === 'string' ? value : (value === null || value === undefined ? '' : String(value));
+  if (action === 'play' || action === 'stop') {
+    return action;
+  }
+  return ALARM_DEFAULT_ACTION;
 }
 
 function parseAlarmIds(value) {
@@ -346,6 +368,7 @@ function normalizeAlarmSlotIds(values) {
 function alarmSlotConfigKeys(slotId) {
   return {
     enabled: slotId + '_enabled',
+    action: slotId + '_action',
     hour: slotId + '_hour',
     minute: slotId + '_minute',
     station: slotId + '_station_uri',
@@ -582,11 +605,13 @@ KoreanRadioAlarm.prototype.saveAlarm = function (data) {
     (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_volume'));
   var setStation = Object.prototype.hasOwnProperty.call(data, prefix + 'station_uri') ||
     (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_station_uri'));
+  var setAction = Object.prototype.hasOwnProperty.call(data, prefix + 'action');
 
   var enabled = this._normalizeBooleanValue(setEnabled ? (useLegacyPayload ? data.alarm_enabled : data[prefix + 'enabled']) : existing.alarm_enabled);
   var hour = AlarmHelpers.normalizeSelectValue(setHour ? (useLegacyPayload ? data.alarm_hour : data[prefix + 'hour']) : existing.alarm_hour, 0, 23, 1, existing.alarm_hour);
   var minute = AlarmHelpers.normalizeSelectValue(setMinute ? (useLegacyPayload ? data.alarm_minute : data[prefix + 'minute']) : existing.alarm_minute, 0, 59, 1, existing.alarm_minute);
   var volume = AlarmHelpers.normalizeSelectValue(setVolume ? (useLegacyPayload ? data.alarm_volume : data[prefix + 'volume']) : existing.alarm_volume, 0, 100, 5, existing.alarm_volume);
+  var action = buildActionValue(setAction ? data[prefix + 'action'] : existing.alarm_action);
   var weekdays = this._getWeekdayValuesFromPayload(slotId, data, existing);
 
   if (!station) {
@@ -619,6 +644,9 @@ KoreanRadioAlarm.prototype.saveAlarm = function (data) {
   }
   if (setVolume) {
     this.configManager.set(prefix + 'volume', volume);
+  }
+  if (setAction) {
+    this.configManager.set(prefix + 'action', action);
   }
   if (setStation) {
     this.configManager.set(prefix + 'station_uri', station.uri || stationUri);
@@ -657,6 +685,7 @@ KoreanRadioAlarm.prototype.addAlarm = function () {
   var keys = alarmSlotConfigKeys(nextSlotId);
 
   this.configManager.set(keys.enabled, this._normalizeBooleanValue(slotConfig.alarm_enabled));
+  this.configManager.set(keys.action, slotConfig.alarm_action);
   this.configManager.set(keys.hour, slotConfig.alarm_hour);
   this.configManager.set(keys.minute, slotConfig.alarm_minute);
   this.configManager.set(keys.station, slotConfig.alarm_station_uri);
@@ -756,6 +785,88 @@ KoreanRadioAlarm.prototype.handleBrowseUri = function (uri) {
   }
 
   return this._buildRootNavigation();
+};
+
+KoreanRadioAlarm.prototype._stopPlayback = function () {
+  var self = this;
+  var stopPromise = null;
+
+  if (this.mpdPlugin && typeof this.mpdPlugin.sendMpdCommand === 'function') {
+    stopPromise = callPluginMethod(this.mpdPlugin, 'sendMpdCommand', ['stop', []]);
+  } else if (this.commandRouter) {
+    if (typeof this.commandRouter.volumioStop === 'function') {
+      stopPromise = callPluginMethod(this.commandRouter, 'volumioStop', []);
+    } else if (typeof this.commandRouter.stop === 'function') {
+      stopPromise = callPluginMethod(this.commandRouter, 'stop', []);
+    } else {
+      stopPromise = libQ.resolve(false);
+    }
+  } else {
+    stopPromise = libQ.resolve(false);
+  }
+
+  return stopPromise.then(function () {
+    if (!self.commandRouter || !self.commandRouter.stateMachine || typeof self.commandRouter.stateMachine.syncState !== 'function') {
+      return libQ.resolve();
+    }
+
+    var currentState = {
+      service: 'mpd',
+      status: 'stop',
+      title: '',
+      album: '',
+      artist: '',
+      uri: '',
+      path: '',
+      trackType: 'webradio',
+      isStreaming: false,
+      duration: 0,
+      stationUri: '',
+      pluginUri: ''
+    };
+
+    if (!self.mpdPlugin || typeof self.mpdPlugin.getState !== 'function') {
+      return callPluginMethod(self.commandRouter.stateMachine, 'syncState', [currentState, 'mpd']);
+    }
+
+    return callPluginMethod(self.mpdPlugin, 'getState', [])
+      .then(function (state) {
+        if (!state) {
+          state = currentState;
+        } else {
+          currentState.service = state.service || currentState.service;
+          currentState.status = state.status || currentState.status;
+          currentState.uri = state.uri || currentState.uri;
+          currentState.path = state.path || currentState.path;
+          currentState.title = state.title || currentState.title;
+          currentState.trackType = state.trackType || currentState.trackType;
+          currentState.duration = typeof state.duration === 'number' ? state.duration : currentState.duration;
+          currentState.album = state.album || currentState.album;
+          currentState.artist = state.artist || currentState.artist;
+          if (state.stationUri) {
+            currentState.stationUri = state.stationUri;
+          }
+          if (state.pluginUri) {
+            currentState.pluginUri = state.pluginUri;
+          }
+
+          currentState.status = 'stop';
+          currentState.isStreaming = false;
+
+          return currentState;
+        }
+
+        return currentState;
+      })
+      .fail(function () {
+        return currentState;
+      })
+      .then(function (state) {
+        state.status = 'stop';
+        state.isStreaming = false;
+        return callPluginMethod(self.commandRouter.stateMachine, 'syncState', [state, state.service || 'mpd']);
+      });
+  });
 };
 
 KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
@@ -889,6 +1000,10 @@ KoreanRadioAlarm.prototype._onAlarmFire = function (slotId) {
   var alarmConfig = this._getStoredAlarmConfig(slotId || 'alarm_1');
   if (!alarmConfig || !alarmConfig.alarm_enabled) {
     return libQ.resolve(false);
+  }
+
+  if ((alarmConfig.alarm_action || ALARM_DEFAULT_ACTION) === 'stop') {
+    return this._stopPlayback();
   }
 
   var station = AlarmHelpers.findStationByUri(this.catalog, alarmConfig.alarm_station_uri);
@@ -1098,6 +1213,7 @@ KoreanRadioAlarm.prototype._hasMeaningfulSlotConfigValues = function (slotId) {
   var prefix = normalized + '_';
   var defaults = defaultAlarmConfigForMigration(normalized, this.catalog);
   var enabled = this._unwrapConfigValue(this.configManager.get(prefix + 'enabled', defaults.alarm_enabled));
+  var action = this._unwrapConfigValue(this.configManager.get(prefix + 'action', defaults.alarm_action));
   var hour = this._unwrapConfigValue(this.configManager.get(prefix + 'hour', defaults.alarm_hour));
   var minute = this._unwrapConfigValue(this.configManager.get(prefix + 'minute', defaults.alarm_minute));
   var volume = this._unwrapConfigValue(this.configManager.get(prefix + 'volume', defaults.alarm_volume));
@@ -1111,6 +1227,9 @@ KoreanRadioAlarm.prototype._hasMeaningfulSlotConfigValues = function (slotId) {
   var sunday = this._unwrapConfigValue(this.configManager.get(prefix + 'sunday', defaults.sunday));
 
   if (!!enabled !== !!defaults.alarm_enabled) {
+    return true;
+  }
+  if (buildActionValue(action) !== defaults.alarm_action) {
     return true;
   }
   if (hour !== defaults.alarm_hour || minute !== defaults.alarm_minute || volume !== defaults.alarm_volume) {
@@ -1160,6 +1279,7 @@ KoreanRadioAlarm.prototype._setDefaultConfigForSlot = function (slotId) {
   var keys = alarmSlotConfigKeys(slotId);
   var disabledDefaults = {
     enabled: false,
+    action: ALARM_DEFAULT_ACTION,
     hour: 7,
     minute: 0,
     station_uri: defaults.alarm_station_uri,
@@ -1174,6 +1294,7 @@ KoreanRadioAlarm.prototype._setDefaultConfigForSlot = function (slotId) {
   };
 
   this.configManager.set(keys.enabled, disabledDefaults.enabled);
+  this.configManager.set(keys.action, disabledDefaults.action);
   this.configManager.set(keys.hour, disabledDefaults.hour);
   this.configManager.set(keys.minute, disabledDefaults.minute);
   this.configManager.set(keys.station, disabledDefaults.station_uri);
@@ -1255,6 +1376,7 @@ KoreanRadioAlarm.prototype._hasSlotConfigValues = function (slotId) {
   }
   var prefix = slotId + '_';
   return this.configManager.get(prefix + 'enabled', undefined) !== undefined ||
+    this.configManager.get(prefix + 'action', undefined) !== undefined ||
     this.configManager.get(prefix + 'hour', undefined) !== undefined ||
     this.configManager.get(prefix + 'minute', undefined) !== undefined ||
     this.configManager.get(prefix + 'station_uri', undefined) !== undefined ||
@@ -1739,6 +1861,7 @@ KoreanRadioAlarm.prototype._getStoredAlarmConfig = function (slotId) {
   if (slotId === 'alarm_1' && !this._hasSlotConfigValues(slotId) && this._hasLegacyAlarmValues()) {
     defaults = {
       alarm_enabled: this._unwrapConfigValue(this.configManager.get('alarm_enabled', defaults.alarm_enabled)),
+      alarm_action: this._unwrapConfigValue(this.configManager.get('alarm_action', defaults.alarm_action)),
       alarm_hour: this._unwrapConfigValue(this.configManager.get('alarm_hour', defaults.alarm_hour)),
       alarm_minute: this._unwrapConfigValue(this.configManager.get('alarm_minute', defaults.alarm_minute)),
       alarm_station_uri: this._unwrapConfigValue(this.configManager.get('alarm_station_uri', defaults.alarm_station_uri)),
@@ -1754,6 +1877,7 @@ KoreanRadioAlarm.prototype._getStoredAlarmConfig = function (slotId) {
   } else {
     defaults = {
       alarm_enabled: this._unwrapConfigValue(this.configManager.get(prefix + 'enabled', defaults.alarm_enabled)),
+      alarm_action: this._unwrapConfigValue(this.configManager.get(prefix + 'action', defaults.alarm_action)),
       alarm_hour: this._unwrapConfigValue(this.configManager.get(prefix + 'hour', defaults.alarm_hour)),
       alarm_minute: this._unwrapConfigValue(this.configManager.get(prefix + 'minute', defaults.alarm_minute)),
       alarm_station_uri: this._unwrapConfigValue(this.configManager.get(prefix + 'station_uri', defaults.alarm_station_uri)),
@@ -1770,6 +1894,7 @@ KoreanRadioAlarm.prototype._getStoredAlarmConfig = function (slotId) {
 
   var stored = {
     alarm_enabled: this._normalizeBooleanValue(defaults.alarm_enabled),
+    alarm_action: buildActionValue(defaults.alarm_action),
     alarm_hour: AlarmHelpers.normalizeSelectValue(defaults.alarm_hour, 0, 23, 1, defaults.alarm_hour),
     alarm_minute: AlarmHelpers.normalizeSelectValue(defaults.alarm_minute, 0, 59, 1, defaults.alarm_minute),
     alarm_volume: AlarmHelpers.normalizeSelectValue(defaults.alarm_volume, 0, 100, 5, defaults.alarm_volume),
