@@ -201,3 +201,66 @@ test('findStationByUri resolves both direct ids and uri values', () => {
   assert.strictEqual(byId.name, 'YTN');
   assert.strictEqual(missing, null);
 });
+
+test('clearAddPlayTrack passes plugin service and metadata to stateMachine.syncState', async () => {
+  var plugin = createPlugin({
+    addToBrowseSources: function () {},
+    volumioSetVolume: function () {}
+  });
+
+  var mpdCalls = [];
+  var syncStateCalls = [];
+
+  plugin.mpdPlugin = {
+    sendMpdCommand: function (command, args, cb) {
+      mpdCalls.push([command, args]);
+      if (typeof cb === 'function') {
+        cb(null, true);
+        return;
+      }
+      return Promise.resolve(true);
+    },
+    getState: function (cb) {
+      var state = {
+        status: 'playing',
+        service: 'mpd',
+        uri: 'https://old.example.com/stream',
+        title: ''
+      };
+      if (typeof cb === 'function') {
+        cb(null, state);
+        return;
+      }
+      return Promise.resolve(state);
+    }
+  };
+
+  plugin.commandRouter = {
+    stateMachine: {
+      syncState: function (state, service, cb) {
+        syncStateCalls.push([state, service]);
+        if (typeof cb === 'function') {
+          cb(null, true);
+          return;
+        }
+        return Promise.resolve(true);
+      }
+    }
+  };
+
+  await plugin.clearAddPlayTrack({
+    service: 'korean_radio_alarm',
+    uri: 'korean_radio_alarm://station/classic',
+    realUri: 'https://radio.example.com/stream',
+    name: 'KBS Classic FM'
+  });
+
+  assert.strictEqual(mpdCalls.length, 4);
+  assert.strictEqual(syncStateCalls.length, 1);
+  assert.strictEqual(syncStateCalls[0][1], 'korean_radio_alarm');
+  assert.strictEqual(syncStateCalls[0][0].service, 'korean_radio_alarm');
+  assert.strictEqual(syncStateCalls[0][0].uri, 'https://radio.example.com/stream');
+  assert.strictEqual(syncStateCalls[0][0].title, 'KBS Classic FM');
+  assert.strictEqual(syncStateCalls[0][0].path, 'https://radio.example.com/stream');
+  assert.strictEqual(syncStateCalls[0][0].status, 'playing');
+});

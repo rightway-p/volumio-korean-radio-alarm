@@ -476,7 +476,7 @@ KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
   }
 
   var self = this;
-  var serviceName = 'mpd';
+  var serviceName = PLUGIN_NAME;
 
   return callPluginMethod(this.mpdPlugin, 'sendMpdCommand', ['stop', []])
     .then(function () {
@@ -501,6 +501,11 @@ KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
         if (!state) {
           return true;
         }
+
+        state.service = serviceName;
+        state.title = playTrack.name || playTrack.title || state.title;
+        state.uri = playTrack.realUri || playTrack.uri || state.uri;
+        state.path = playTrack.realUri || state.path;
 
         return callPluginMethod(self.commandRouter.stateMachine, 'syncState', [state, serviceName]);
       });
