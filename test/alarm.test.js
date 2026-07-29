@@ -49,7 +49,7 @@ test('buildCronExpressions maps weekdays to cron entries', () => {
   ]);
 });
 
-test('getUIConfig provides 3 alarm sections with hydrated 1-minute options', async () => {
+test('getUIConfig renders actions section plus dynamic stored alarms', async () => {
   var plugin = createPlugin({
     getLanguage: function () {
       return 'en';
@@ -61,6 +61,7 @@ test('getUIConfig provides 3 alarm sections with hydrated 1-minute options', asy
 
   var setCalls = [];
   plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1,alarm_2',
     alarm_enabled: true,
     alarm_hour: 6,
     alarm_minute: { value: '15', type: 'number' },
@@ -84,12 +85,7 @@ test('getUIConfig provides 3 alarm sections with hydrated 1-minute options', asy
     alarm_2_thursday: { value: true },
     alarm_2_friday: { value: false },
     alarm_2_saturday: { value: false },
-    alarm_2_sunday: { value: false },
-    alarm_3_enabled: true,
-    alarm_3_hour: 8,
-    alarm_3_minute: 0,
-    alarm_3_station_uri: 'korean_radio_alarm://station/classic',
-    alarm_3_volume: 35
+    alarm_2_sunday: { value: false }
   }, setCalls);
 
   plugin.catalog = {
@@ -108,12 +104,28 @@ test('getUIConfig provides 3 alarm sections with hydrated 1-minute options', asy
 
   assert.strictEqual(Array.isArray(ui.sections), true);
   assert.strictEqual(ui.sections.length, 3);
-  var section1 = ui.sections[0];
-  var section2 = ui.sections[1];
-  var section3 = ui.sections[2];
+
+  var actionSection = ui.sections[0];
+  assert.strictEqual(actionSection.id, 'alarm_actions');
+  assert.strictEqual(Array.isArray(actionSection.content), true);
+  assert.strictEqual(actionSection.content.length > 0, true);
+  var addButton = actionSection.content[0];
+  assert.strictEqual(addButton.element, 'button');
+  assert.strictEqual(addButton.label, 'TRANSLATE.BUTTON.ADD_ALARM');
+  assert.strictEqual(addButton.onClick.type, 'emit');
+  assert.strictEqual(addButton.onClick.message, 'callMethod');
+  assert.strictEqual(addButton.onClick.data.endpoint, 'music_service/korean_radio_alarm');
+  assert.strictEqual(addButton.onClick.data.method, 'addAlarm');
+  assert.deepStrictEqual(addButton.onClick.data.data, {});
+
+  var section1 = ui.sections[1];
+  var section2 = ui.sections[2];
   var slot1Hour = null;
   var slot1Minute = null;
   var slot1MinuteOptions = null;
+  var section2Minute = null;
+  var section2Delete = null;
+  var section1Delete = null;
 
   for (var i = 0; i < section1.content.length; i++) {
     var item = section1.content[i];
@@ -124,24 +136,420 @@ test('getUIConfig provides 3 alarm sections with hydrated 1-minute options', asy
       slot1Minute = item.value;
       slot1MinuteOptions = item.options;
     }
+    if (item.id === 'alarm_1_delete') {
+      section1Delete = item;
+    }
+  }
+
+  for (var x = 0; x < section2.content.length; x++) {
+    var item = section2.content[x];
+    if (item.id === 'alarm_2_minute') {
+      section2Minute = item.value;
+    }
+    if (item.id === 'alarm_2_delete') {
+      section2Delete = item;
+    }
   }
 
   assert.strictEqual(section1.id, 'alarm_settings_1');
   assert.strictEqual(section2.id, 'alarm_settings_2');
-  assert.strictEqual(section3.id, 'alarm_settings_3');
   assert.strictEqual(slot1Hour, 6);
   assert.strictEqual(slot1Minute, 15);
   assert.strictEqual(slot1MinuteOptions.length, 60);
+  assert.strictEqual(section2Minute, 10);
 
-  var slot2Enabled = null;
-  for (var j = 0; j < section2.content.length; j++) {
-    if (section2.content[j].id === 'alarm_2_enabled') {
-      slot2Enabled = section2.content[j].value;
-      break;
+  var deleteButtons = [section1Delete, section2Delete];
+  deleteButtons.forEach(function (button, index) {
+    assert.ok(button);
+    assert.strictEqual(button.element, 'button');
+    assert.strictEqual(button.label, 'TRANSLATE.BUTTON.DELETE_ALARM');
+    assert.strictEqual(button.onClick.type, 'emit');
+    assert.strictEqual(button.onClick.message, 'callMethod');
+    assert.strictEqual(button.onClick.data.endpoint, 'music_service/korean_radio_alarm');
+    assert.strictEqual(button.onClick.data.method, 'deleteAlarm');
+    assert.strictEqual(button.onClick.data.data.slotId, 'alarm_' + (index + 1));
+  });
+
+  assert.strictEqual(section1Delete.onClick.data.data.slotId, 'alarm_1');
+  assert.strictEqual(section2Delete.onClick.data.data.slotId, 'alarm_2');
+});
+
+test('fresh/default stored alarm ids only include alarm_1', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    },
+    i18nJson: function () {
+      return require('../UIConfig.json');
     }
-  }
+  });
 
-  assert.strictEqual(slot2Enabled, true);
+  var pluginCalls = [];
+  plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1'
+  }, pluginCalls);
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  var ui = await plugin.getUIConfig();
+
+  assert.strictEqual(ui.sections.length, 2);
+  assert.strictEqual(ui.sections[0].id, 'alarm_actions');
+  assert.strictEqual(ui.sections[1].id, 'alarm_settings_1');
+  assert.strictEqual(ui.sections[1].content[1].id, 'alarm_1_hour');
+  assert.strictEqual(ui.sections[1].content[1].value, 7);
+});
+
+test('explicit empty alarm_ids keeps only add action and no alarm sections', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    },
+    i18nJson: function () {
+      return require('../UIConfig.json');
+    }
+  });
+
+  plugin.configManager = createConfigManager({
+    alarm_ids: '',
+    alarm_1_enabled: true,
+    alarm_1_hour: 8,
+    alarm_1_minute: 15,
+    alarm_1_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_1_volume: 40,
+    alarm_1_monday: true,
+    alarm_1_tuesday: false,
+    alarm_1_wednesday: false,
+    alarm_1_thursday: false,
+    alarm_1_friday: false,
+    alarm_1_saturday: false,
+    alarm_1_sunday: false,
+    alarm_2_enabled: true,
+    alarm_2_hour: 9,
+    alarm_2_minute: 30,
+    alarm_2_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_2_volume: 55,
+    alarm_2_monday: true,
+    alarm_2_tuesday: false,
+    alarm_2_wednesday: false,
+    alarm_2_thursday: false,
+    alarm_2_friday: false,
+    alarm_2_saturday: false,
+    alarm_2_sunday: false
+  });
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  var ui = await plugin.getUIConfig();
+  var storedIds = plugin._getStoredAlarmIds();
+
+  assert.deepStrictEqual(storedIds, []);
+  assert.strictEqual(ui.sections.length, 1);
+  assert.strictEqual(ui.sections[0].id, 'alarm_actions');
+});
+
+test('old fixed-slot default values do not force old unused alarms, while meaningful slots appear', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    },
+    i18nJson: function () {
+      return require('../UIConfig.json');
+    }
+  });
+
+  var configData = {
+    alarm_2_enabled: false,
+    alarm_2_hour: 7,
+    alarm_2_minute: 0,
+    alarm_2_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_2_volume: 45,
+    alarm_2_monday: false,
+    alarm_2_tuesday: false,
+    alarm_2_wednesday: false,
+    alarm_2_thursday: false,
+    alarm_2_friday: false,
+    alarm_2_saturday: false,
+    alarm_2_sunday: false,
+    alarm_3_enabled: true,
+    alarm_3_hour: 8,
+    alarm_3_minute: 0,
+    alarm_3_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_3_volume: 45,
+    alarm_3_monday: true,
+    alarm_3_tuesday: true,
+    alarm_3_wednesday: true,
+    alarm_3_thursday: true,
+    alarm_3_friday: true,
+    alarm_3_saturday: false,
+    alarm_3_sunday: false
+  };
+  plugin.configManager = createConfigManager(configData);
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  var ui = await plugin.getUIConfig();
+
+  assert.strictEqual(ui.sections.length, 3);
+  var slot1 = ui.sections[1];
+  var slot2 = ui.sections[2];
+
+  assert.strictEqual(slot1.id, 'alarm_settings_1');
+  assert.strictEqual(slot2.id, 'alarm_settings_2');
+
+  var hasAlarm1 = slot1.content.some(function (item) {
+    return item.id && item.id.indexOf('alarm_1_') === 0;
+  });
+  var hasAlarm2 = slot1.content.some(function (item) {
+    return item.id && item.id.indexOf('alarm_2_') === 0;
+  });
+  var slot2HasHour = slot2.content.some(function (item) {
+    return item.id === 'alarm_3_hour' && item.value === 8;
+  });
+
+  assert.strictEqual(hasAlarm1, true);
+  assert.strictEqual(hasAlarm2, false);
+  assert.strictEqual(slot2HasHour, true);
+});
+
+test('addAlarm appends next numeric slot, persists config, and reschedules', () => {
+  var setCalls = [];
+  var rescheduleCalls = [];
+  var toasts = [];
+  var plugin = createPlugin({
+    pushToastMessage: function (type, title, message) {
+      toasts.push({
+        type: type,
+        title: title,
+        message: message
+      });
+    }
+  });
+
+  plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1',
+    alarm_1_enabled: false,
+    alarm_1_hour: 7,
+    alarm_1_minute: 0,
+    alarm_1_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_1_volume: 45,
+    alarm_1_monday: true,
+    alarm_1_tuesday: true,
+    alarm_1_wednesday: true,
+    alarm_1_thursday: true,
+    alarm_1_friday: true,
+    alarm_1_saturday: false,
+    alarm_1_sunday: false
+  }, setCalls);
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  plugin._rescheduleAlarm = function () {
+    rescheduleCalls.push('called');
+    return { scheduled: 0, enabledSlots: [] };
+  };
+
+  return plugin.addAlarm().then(function (result) {
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.slot, 'alarm_2');
+    assert.deepStrictEqual(result.alarmIds, ['alarm_1', 'alarm_2']);
+    assert.deepStrictEqual(rescheduleCalls, ['called']);
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_ids' && entry[1] === 'alarm_1,alarm_2';
+    }));
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_2_enabled' && entry[1] === false;
+    }));
+    assert.strictEqual(toasts.length, 1);
+  });
+});
+
+test('saving a slot not yet in alarm_ids persists slot id and keeps slot values', () => {
+  var setCalls = [];
+  var plugin = createPlugin({});
+  var rescheduleCalls = [];
+
+  plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1',
+    alarm_2_enabled: true,
+    alarm_2_hour: 7,
+    alarm_2_minute: 0,
+    alarm_2_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_2_volume: 45,
+    alarm_2_monday: true,
+    alarm_2_tuesday: true,
+    alarm_2_wednesday: true,
+    alarm_2_thursday: true,
+    alarm_2_friday: true,
+    alarm_2_saturday: false,
+    alarm_2_sunday: false
+  }, setCalls);
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  plugin._rescheduleAlarm = function () {
+    rescheduleCalls.push('called');
+    return { scheduled: 0, enabledSlots: [] };
+  };
+
+  return plugin.saveAlarm({
+    value: {
+      alarm_2_hour: 8
+    }
+  }).then(function (result) {
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.slot, 'alarm_2');
+    assert.deepStrictEqual(rescheduleCalls, ['called']);
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_ids' && entry[1] === 'alarm_1,alarm_2';
+    }));
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_2_hour' && entry[1] === 8;
+    }));
+  });
+});
+
+test('deleteAlarm removes slot from storage, deletes slot config keys, and reschedules', () => {
+  var setCalls = [];
+  var deleteCalls = [];
+  var deleteArgs = [];
+  var rescheduleCalls = [];
+  var plugin = createPlugin({
+    pushToastMessage: function () {}
+  });
+
+  plugin.configManager = createConfigManager({
+    alarm_ids: 'alarm_1,alarm_2',
+    alarm_1_enabled: false,
+    alarm_1_hour: 7,
+    alarm_1_minute: 0,
+    alarm_1_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_1_volume: 45,
+    alarm_1_monday: true,
+    alarm_1_tuesday: true,
+    alarm_1_wednesday: true,
+    alarm_1_thursday: true,
+    alarm_1_friday: true,
+    alarm_1_saturday: false,
+    alarm_1_sunday: false,
+    alarm_2_enabled: true,
+    alarm_2_hour: 8,
+    alarm_2_minute: 0,
+    alarm_2_station_uri: 'korean_radio_alarm://station/classic',
+    alarm_2_volume: 30,
+    alarm_2_monday: false,
+    alarm_2_tuesday: false,
+    alarm_2_wednesday: false,
+    alarm_2_thursday: false,
+    alarm_2_friday: false,
+    alarm_2_saturday: false,
+    alarm_2_sunday: false
+  }, setCalls, deleteCalls, deleteArgs);
+
+  plugin.configManager.delete = function (key) {
+    deleteArgs.push(key);
+    deleteCalls.push(key);
+  };
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  plugin._rescheduleAlarm = function () {
+    rescheduleCalls.push('called');
+    return { scheduled: 0, enabledSlots: [] };
+  };
+
+  return plugin.deleteAlarm({ value: { slotId: 'alarm_2' } }).then(function (result) {
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.slot, 'alarm_2');
+    assert.deepStrictEqual(result.alarmIds, ['alarm_1']);
+    assert.deepStrictEqual(rescheduleCalls, ['called']);
+    assert.ok(setCalls.some(function (entry) {
+      return entry[0] === 'alarm_ids' && entry[1] === 'alarm_1';
+    }));
+    var expectedDeleted = [
+      'alarm_2_enabled',
+      'alarm_2_hour',
+      'alarm_2_minute',
+      'alarm_2_station_uri',
+      'alarm_2_volume',
+      'alarm_2_monday',
+      'alarm_2_tuesday',
+      'alarm_2_wednesday',
+      'alarm_2_thursday',
+      'alarm_2_friday',
+      'alarm_2_saturday',
+      'alarm_2_sunday'
+    ];
+
+    assert.deepStrictEqual(deleteArgs.slice().sort(), expectedDeleted.slice().sort());
+  });
+});
+
+test('deleteAlarm accepts direct slot payload forms', () => {
+  var plugin = createPlugin({});
+  assert.strictEqual(plugin._extractSlotIdFromPayload('alarm_2'), 'alarm_2');
+  assert.strictEqual(plugin._extractSlotIdFromPayload({ slotId: 'alarm_3' }), 'alarm_3');
+  assert.strictEqual(plugin._extractSlotIdFromPayload({ value: { slotId: 'alarm_4' } }), 'alarm_4');
 });
 
 test('wrapped config values normalize to plain types for legacy single-alarm migration', () => {
@@ -274,7 +682,7 @@ test('legacy single-alarm values are projected to alarm_1 when slot keys do not 
 test('rescheduleAlarm schedules every enabled slot and preserves slot context on callbacks', () => {
   var cron = require('node-cron');
   var originalSchedule = cron.schedule;
-  var scheduled = [];
+    var scheduled = [];
 
   cron.schedule = function (expr, cb, opts) {
     scheduled.push({
@@ -291,6 +699,7 @@ test('rescheduleAlarm schedules every enabled slot and preserves slot context on
   try {
     var plugin = createPlugin({});
     plugin.configManager = createConfigManager({
+      alarm_ids: 'alarm_1,alarm_3',
       alarm_1_enabled: true,
       alarm_1_hour: 7,
       alarm_1_minute: 0,
@@ -303,6 +712,18 @@ test('rescheduleAlarm schedules every enabled slot and preserves slot context on
       alarm_1_friday: false,
       alarm_1_saturday: false,
       alarm_1_sunday: false,
+      alarm_2_enabled: true,
+      alarm_2_hour: 7,
+      alarm_2_minute: 30,
+      alarm_2_station_uri: 'korean_radio_alarm://station/classic',
+      alarm_2_volume: 45,
+      alarm_2_monday: true,
+      alarm_2_tuesday: false,
+      alarm_2_wednesday: false,
+      alarm_2_thursday: false,
+      alarm_2_friday: false,
+      alarm_2_saturday: false,
+      alarm_2_sunday: false,
       alarm_3_enabled: true,
       alarm_3_hour: 7,
       alarm_3_minute: 30,
@@ -342,8 +763,10 @@ test('rescheduleAlarm schedules every enabled slot and preserves slot context on
       task.cb();
     });
 
-    assert.strictEqual(fireLog.indexOf('alarm_1') >= 0, true);
-    assert.strictEqual(fireLog.indexOf('alarm_3') >= 0, true);
+    assert.deepStrictEqual(
+      fireLog.slice().sort(),
+      ['alarm_1', 'alarm_3'].sort()
+    );
   } finally {
     cron.schedule = originalSchedule;
   }
@@ -444,8 +867,9 @@ function createPlugin(coreCommand) {
   return plugin;
 }
 
-function createConfigManager(values, setSpy) {
+function createConfigManager(values, setSpy, deleteSpy) {
   var store = values || {};
+  var deleteCalls = deleteSpy || [];
   return {
     get: function (key, fallback) {
       if (Object.prototype.hasOwnProperty.call(store, key)) {
@@ -459,6 +883,15 @@ function createConfigManager(values, setSpy) {
     },
     save: function () {
       return true;
+    },
+    getKeys: function () {
+      return Object.keys(store);
+    },
+    delete: function (key) {
+      if (deleteSpy && deleteSpy.push) {
+        deleteSpy.push(key);
+      }
+      delete store[key];
     }
   };
 }

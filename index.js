@@ -19,8 +19,9 @@ var WEBRADIO_SERVICE = 'webradio';
 var KBS_PLAY_API_URL_BASE = 'https://static.api.kbs.co.kr/play/1.2/live/channel/';
 var KBS_PLAY_API_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwbGF0Zm9ybUlkIjoia2JzLWhvbWUiLCJ1c2VySWQiOiIiLCJkYXRhIjoiIiwic2NvcGUiOlsiZGVmYXVsdCIsImFkbWluIl0sInRva2VuRXhwaXJlVGltZSI6MjIyNDkxMTMwODIwM30.hb4K_Wn2ekzNO84xfAOrPnj2OyAeRt7HgSr2TzgQvJQ';
 var STREAM_RESOLVER_CACHE_TTL_MS = 20 * 60 * 1000;
-var ALARM_SLOT_IDS = ['alarm_1', 'alarm_2', 'alarm_3'];
 var WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+var ALARM_SLOT_ID_REGEXP = /^alarm_(\d+)$/;
+var ALARM_SLOT_FIELD_REGEXP = /^alarm_(\d+)_(.+)$/;
 
 function KoreanRadioAlarm(context) {
   this.context = context;
@@ -161,8 +162,67 @@ function toLabel(value, width) {
 }
 
 function stripSlotIdPrefix(fieldId) {
-  var match = /^alarm_[1-3]_(.+)$/.exec(fieldId);
+  var match = ALARM_SLOT_FIELD_REGEXP.exec(fieldId);
   return match ? match[1] : '';
+}
+
+function alarmSlotLabelFor(slotId) {
+  var numberPart = parseInt((slotId || '').split('_')[1], 10);
+  if (!isNaN(numberPart) && numberPart >= 1 && numberPart <= 3) {
+    return 'TRANSLATE.SECTION.ALARM_SLOT_' + numberPart;
+  }
+
+  return 'TRANSLATE.SECTION.ALARM_SLOT';
+}
+
+function buildAlarmSection(slotId, slotIndex, alarmConfig, stationOptions, hourOptions, minuteOptions, volumeOptions) {
+  var keys = alarmSlotConfigKeys(slotId);
+
+  return {
+    id: 'alarm_settings_' + slotIndex,
+    element: 'section',
+    label: alarmSlotLabelFor(slotId),
+    icon: 'fa-clock-o',
+    onSave: {
+      type: 'controller',
+      endpoint: 'music_service/korean_radio_alarm',
+      method: 'saveAlarm'
+    },
+    saveButton: {
+      label: 'TRANSLATE.BUTTON.SAVE',
+      data: [keys.enabled, keys.hour, keys.minute, keys.station, keys.volume, keys.monday, keys.tuesday, keys.wednesday, keys.thursday, keys.friday, keys.saturday, keys.sunday]
+    },
+    content: [
+      { type: 'boolean', element: 'switch', id: keys.enabled, label: 'TRANSLATE.ALARM.ENABLED', value: !!alarmConfig.alarm_enabled },
+      { element: 'select', id: keys.hour, label: 'TRANSLATE.ALARM.HOUR', value: alarmConfig.alarm_hour, options: hourOptions },
+      { element: 'select', id: keys.minute, label: 'TRANSLATE.ALARM.MINUTE', value: alarmConfig.alarm_minute, options: minuteOptions },
+      { element: 'select', id: keys.station, label: 'TRANSLATE.ALARM.STATION', value: alarmConfig.alarm_station_uri, options: stationOptions },
+      { element: 'select', id: keys.volume, label: 'TRANSLATE.ALARM.VOLUME', value: alarmConfig.alarm_volume, options: volumeOptions },
+      { type: 'boolean', element: 'switch', id: keys.monday, label: 'TRANSLATE.WEEKDAY.MONDAY', value: !!alarmConfig.monday },
+      { type: 'boolean', element: 'switch', id: keys.tuesday, label: 'TRANSLATE.WEEKDAY.TUESDAY', value: !!alarmConfig.tuesday },
+      { type: 'boolean', element: 'switch', id: keys.wednesday, label: 'TRANSLATE.WEEKDAY.WEDNESDAY', value: !!alarmConfig.wednesday },
+      { type: 'boolean', element: 'switch', id: keys.thursday, label: 'TRANSLATE.WEEKDAY.THURSDAY', value: !!alarmConfig.thursday },
+      { type: 'boolean', element: 'switch', id: keys.friday, label: 'TRANSLATE.WEEKDAY.FRIDAY', value: !!alarmConfig.friday },
+      { type: 'boolean', element: 'switch', id: keys.saturday, label: 'TRANSLATE.WEEKDAY.SATURDAY', value: !!alarmConfig.saturday },
+      { type: 'boolean', element: 'switch', id: keys.sunday, label: 'TRANSLATE.WEEKDAY.SUNDAY', value: !!alarmConfig.sunday },
+      {
+        element: 'button',
+        id: slotId + '_delete',
+        label: 'TRANSLATE.BUTTON.DELETE_ALARM',
+        onClick: {
+          type: 'emit',
+          message: 'callMethod',
+          data: {
+            endpoint: 'music_service/korean_radio_alarm',
+            method: 'deleteAlarm',
+            data: {
+              slotId: slotId
+            }
+          }
+        }
+      }
+    ]
+  };
 }
 
 function streamResolverCacheKey(resolverType, channelId) {
@@ -170,7 +230,7 @@ function streamResolverCacheKey(resolverType, channelId) {
 }
 
 function getSlotIdForKey(key) {
-  var match = /^alarm_([1-3])_.+$/.exec(key);
+  var match = ALARM_SLOT_FIELD_REGEXP.exec(key);
   if (!match) {
     return null;
   }
@@ -196,6 +256,107 @@ function defaultAlarmConfig(alarmSlot, catalog) {
     friday: true,
     saturday: false,
     sunday: false
+  };
+}
+
+function defaultAlarmConfigForMigration(slotId, catalog) {
+  var defaults = defaultAlarmConfig(slotId, catalog);
+  if (slotId === 'alarm_1') {
+    return defaults;
+  }
+
+  return {
+    alarm_enabled: false,
+    alarm_hour: defaults.alarm_hour,
+    alarm_minute: defaults.alarm_minute,
+    alarm_station_uri: defaults.alarm_station_uri,
+    alarm_volume: defaults.alarm_volume,
+    monday: false,
+    tuesday: false,
+    wednesday: false,
+    thursday: false,
+    friday: false,
+    saturday: false,
+    sunday: false
+  };
+}
+
+function normalizeAlarmSlotId(slotId) {
+  var candidate = String(slotId || '').trim();
+  var match = ALARM_SLOT_ID_REGEXP.exec(candidate);
+  if (match) {
+    return 'alarm_' + match[1];
+  }
+
+  if (/^\d+$/.test(candidate)) {
+    return 'alarm_' + parseInt(candidate, 10);
+  }
+
+  return null;
+}
+
+function parseAlarmIds(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  var valueAsString = String(value).trim();
+  if (valueAsString.length === 0) {
+    return [];
+  }
+
+  return valueAsString.split(',').map(function (part) {
+    return part.trim();
+  }).filter(function (part) {
+    return part.length > 0;
+  });
+}
+
+function normalizeAlarmSlotIds(values) {
+  var dedup = {};
+  var normalized = [];
+
+  (values || []).forEach(function (value) {
+    var slotId = normalizeAlarmSlotId(value);
+    if (!slotId) {
+      return;
+    }
+
+    if (dedup[slotId]) {
+      return;
+    }
+
+    dedup[slotId] = true;
+    normalized.push(slotId);
+  });
+
+  normalized.sort(function (a, b) {
+    var aNum = parseInt(a.split('_')[1], 10);
+    var bNum = parseInt(b.split('_')[1], 10);
+    return aNum - bNum;
+  });
+
+  return normalized;
+}
+
+function alarmSlotConfigKeys(slotId) {
+  return {
+    enabled: slotId + '_enabled',
+    hour: slotId + '_hour',
+    minute: slotId + '_minute',
+    station: slotId + '_station_uri',
+    volume: slotId + '_volume',
+    monday: slotId + '_monday',
+    tuesday: slotId + '_tuesday',
+    wednesday: slotId + '_wednesday',
+    thursday: slotId + '_thursday',
+    friday: slotId + '_friday',
+    saturday: slotId + '_saturday',
+    sunday: slotId + '_sunday'
   };
 }
 
@@ -340,6 +501,7 @@ KoreanRadioAlarm.prototype.getUIConfig = function () {
       return uiConfig;
     }
 
+    var alarmIds = self._getStoredAlarmIds();
     var stationOptions = AlarmHelpers.stationOptionsFromCatalog(self.catalog);
     var hourOptions = [];
     for (var h = 0; h <= 23; h++) {
@@ -356,96 +518,23 @@ KoreanRadioAlarm.prototype.getUIConfig = function () {
       volumeOptions.push({ value: v, label: String(v) });
     }
 
+    var builtSections = [];
     uiConfig.sections.forEach(function (section) {
-      if (!section || !Array.isArray(section.content)) {
+      if (!section) {
         return;
       }
 
-      var match = /_([1-3])$/.exec(section.id || '');
-      var slotId = match ? 'alarm_' + match[1] : null;
-      if (!slotId) {
-        return;
-      }
-
-      var alarmConfig = self._getStoredAlarmConfig(slotId);
-      var contentById = {};
-      section.content.forEach(function (item) {
-        if (item && item.id) {
-          contentById[item.id] = item;
-        }
-      });
-
-      var minute = alarmConfig.alarm_minute;
-      var hour = alarmConfig.alarm_hour;
-      var volume = alarmConfig.alarm_volume;
-      var stationUri = alarmConfig.alarm_station_uri;
-
-      if (!stationUri && stationOptions.length > 0) {
-        stationUri = stationOptions[0].value;
-      }
-
-      var enabledId = slotId + '_enabled';
-      var hourId = slotId + '_hour';
-      var minuteId = slotId + '_minute';
-      var stationId = slotId + '_station_uri';
-      var volumeId = slotId + '_volume';
-      var fieldIds = {
-        monday: slotId + '_monday',
-        tuesday: slotId + '_tuesday',
-        wednesday: slotId + '_wednesday',
-        thursday: slotId + '_thursday',
-        friday: slotId + '_friday',
-        saturday: slotId + '_saturday',
-        sunday: slotId + '_sunday'
-      };
-
-      if (contentById[enabledId]) {
-        contentById[enabledId].value = !!alarmConfig.alarm_enabled;
-      }
-
-      if (contentById[hourId]) {
-        contentById[hourId].value = hour;
-        contentById[hourId].options = hourOptions;
-      }
-
-      if (contentById[minuteId]) {
-        contentById[minuteId].value = minute;
-        contentById[minuteId].options = minuteOptions;
-      }
-
-      if (contentById[volumeId]) {
-        contentById[volumeId].value = volume;
-        contentById[volumeId].options = volumeOptions;
-      }
-
-      if (contentById[stationId]) {
-        contentById[stationId].value = stationUri;
-        contentById[stationId].options = stationOptions;
-      }
-
-      if (contentById[fieldIds.monday]) {
-        contentById[fieldIds.monday].value = !!alarmConfig.monday;
-      }
-      if (contentById[fieldIds.tuesday]) {
-        contentById[fieldIds.tuesday].value = !!alarmConfig.tuesday;
-      }
-      if (contentById[fieldIds.wednesday]) {
-        contentById[fieldIds.wednesday].value = !!alarmConfig.wednesday;
-      }
-      if (contentById[fieldIds.thursday]) {
-        contentById[fieldIds.thursday].value = !!alarmConfig.thursday;
-      }
-      if (contentById[fieldIds.friday]) {
-        contentById[fieldIds.friday].value = !!alarmConfig.friday;
-      }
-      if (contentById[fieldIds.saturday]) {
-        contentById[fieldIds.saturday].value = !!alarmConfig.saturday;
-      }
-      if (contentById[fieldIds.sunday]) {
-        contentById[fieldIds.sunday].value = !!alarmConfig.sunday;
+      if (section.id === 'alarm_actions') {
+        builtSections.push(section);
       }
     });
 
+    alarmIds.forEach(function (slotId, index) {
+      var alarmConfig = self._getStoredAlarmConfig(slotId);
+      builtSections.push(buildAlarmSection(slotId, index + 1, alarmConfig, stationOptions, hourOptions, minuteOptions, volumeOptions));
+    });
+
+    uiConfig.sections = builtSections;
     return uiConfig;
   });
 };
@@ -461,6 +550,8 @@ KoreanRadioAlarm.prototype.saveAlarm = function (data) {
   if (!slotId) {
     slotId = 'alarm_1';
   }
+
+  var storedAlarmIds = this._getStoredAlarmIds();
 
   var prefix = slotId + '_';
   var existing = this._getStoredAlarmConfig(slotId);
@@ -513,6 +604,10 @@ KoreanRadioAlarm.prototype.saveAlarm = function (data) {
     return libQ.reject(new Error(msg));
   }
 
+  if (storedAlarmIds.indexOf(slotId) === -1) {
+    this._saveAlarmIdList(storedAlarmIds.concat([slotId]));
+  }
+
   if (setEnabled) {
     this.configManager.set(prefix + 'enabled', !!enabled);
   }
@@ -552,6 +647,71 @@ KoreanRadioAlarm.prototype.saveAlarm = function (data) {
     success: true,
     slot: slotId,
     alarm: this.alarmConfig
+  });
+};
+
+KoreanRadioAlarm.prototype.addAlarm = function () {
+  var slotIds = this._getStoredAlarmIds();
+  var nextSlotId = this._getNextAvailableAlarmId(slotIds);
+  var slotConfig = defaultAlarmConfig(nextSlotId, this.catalog);
+  var keys = alarmSlotConfigKeys(nextSlotId);
+
+  this.configManager.set(keys.enabled, this._normalizeBooleanValue(slotConfig.alarm_enabled));
+  this.configManager.set(keys.hour, slotConfig.alarm_hour);
+  this.configManager.set(keys.minute, slotConfig.alarm_minute);
+  this.configManager.set(keys.station, slotConfig.alarm_station_uri);
+  this.configManager.set(keys.volume, slotConfig.alarm_volume);
+  this.configManager.set(keys.monday, this._normalizeBooleanValue(slotConfig.monday));
+  this.configManager.set(keys.tuesday, this._normalizeBooleanValue(slotConfig.tuesday));
+  this.configManager.set(keys.wednesday, this._normalizeBooleanValue(slotConfig.wednesday));
+  this.configManager.set(keys.thursday, this._normalizeBooleanValue(slotConfig.thursday));
+  this.configManager.set(keys.friday, this._normalizeBooleanValue(slotConfig.friday));
+  this.configManager.set(keys.saturday, this._normalizeBooleanValue(slotConfig.saturday));
+  this.configManager.set(keys.sunday, this._normalizeBooleanValue(slotConfig.sunday));
+
+  this._saveAlarmIdList(slotIds.concat([nextSlotId]));
+  this._persistConfig();
+  this._rescheduleAlarm();
+  this._pushToast('success', this._t('ALARM.TITLE', 'Korean Radio Alarm'), this._t('ALARM.ADD_SUCCESS', 'Alarm added successfully'));
+
+  return libQ.resolve({
+    success: true,
+    slot: nextSlotId,
+    alarmIds: this._getStoredAlarmIds()
+  });
+};
+
+KoreanRadioAlarm.prototype.deleteAlarm = function (data) {
+  data = data || {};
+  var slotId = this._extractSlotIdFromPayload(data);
+  if (!slotId) {
+    var missing = this._t('ALARM.DELETE_MISSING_SLOT', 'No slot provided');
+    this._pushToast('error', this._t('ALARM.TITLE', 'Korean Radio Alarm'), missing);
+    return libQ.reject(new Error(missing));
+ }
+
+  var alarmIds = this._getStoredAlarmIds().filter(function (value) {
+    return value !== slotId;
+  });
+  this._saveAlarmIdList(alarmIds);
+
+  var keys = alarmSlotConfigKeys(slotId);
+  if (typeof this.configManager.delete === 'function') {
+    Object.keys(keys).forEach(function (key) {
+      this.configManager.delete(keys[key]);
+    }, this);
+  } else {
+    this._setDefaultConfigForSlot(slotId);
+  }
+
+  this._persistConfig();
+  this._rescheduleAlarm();
+  this._pushToast('success', this._t('ALARM.TITLE', 'Korean Radio Alarm'), this._t('ALARM.DELETE_SUCCESS', 'Alarm deleted successfully'));
+
+  return libQ.resolve({
+    success: true,
+    slot: slotId,
+    alarmIds: alarmIds
   });
 };
 
@@ -815,22 +975,216 @@ KoreanRadioAlarm.prototype._unwrapConfigValue = function (value) {
 };
 
 KoreanRadioAlarm.prototype._extractSlotIdFromPayload = function (data) {
-  var slotId = null;
-  var keys = Object.keys(data || {});
+  var directSlot = function (candidate) {
+    return normalizeAlarmSlotId(candidate || '');
+  };
 
+  if (typeof data === 'string') {
+    return directSlot(data);
+  }
+
+  var slotId = null;
+  if (data && Object.prototype.hasOwnProperty.call(data, 'slotId')) {
+    slotId = directSlot(data.slotId);
+  }
+
+  if (!slotId && data && data.value && typeof data.value === 'string') {
+    slotId = directSlot(data.value);
+  }
+
+  if (!slotId && data && data.value && typeof data.value === 'object' && !Array.isArray(data.value)) {
+    slotId = directSlot(data.value.slotId);
+  }
+
+  if (!slotId && data && data.value && typeof data.value === 'object' && !Array.isArray(data.value)) {
+    var payloadKeys = Object.keys(data.value);
+    for (var j = 0; j < payloadKeys.length; j++) {
+      var payloadKey = payloadKeys[j];
+      var valueMatch = ALARM_SLOT_FIELD_REGEXP.exec(payloadKey);
+      if (valueMatch) {
+        return 'alarm_' + valueMatch[1];
+      }
+    }
+  }
+
+  var keys = Object.keys(data || {});
   keys.forEach(function (key) {
     if (isLegacyAlarmKey(key)) {
       slotId = 'alarm_1';
       return;
     }
 
-    var match = /^alarm_([1-3])_/.exec(key);
+    var match = ALARM_SLOT_FIELD_REGEXP.exec(key);
     if (match) {
       slotId = 'alarm_' + match[1];
     }
   });
 
   return slotId;
+};
+
+KoreanRadioAlarm.prototype._getStoredAlarmIds = function () {
+  var raw = this.configManager && typeof this.configManager.get === 'function' ? this.configManager.get('alarm_ids', undefined) : undefined;
+  var explicitAlarmIds = false;
+
+  if (this.configManager && typeof this.configManager.getKeys === 'function') {
+    try {
+      var allKeys = this.configManager.getKeys();
+      if (Array.isArray(allKeys) && allKeys.indexOf('alarm_ids') >= 0) {
+        explicitAlarmIds = true;
+      }
+    } catch (e) {}
+  } else if (raw !== undefined) {
+    explicitAlarmIds = true;
+  }
+
+  if (explicitAlarmIds) {
+    return normalizeAlarmSlotIds(parseAlarmIds(raw));
+  }
+
+  var discovered = this._discoverAlarmIdsFromKeys();
+  var meaningful = [];
+  var i;
+  for (i = 0; i < discovered.length; i++) {
+    if (discovered[i] === 'alarm_1') {
+      continue;
+    }
+
+    if (this._hasMeaningfulSlotConfigValues(discovered[i])) {
+      meaningful.push(discovered[i]);
+    }
+  }
+
+  return normalizeAlarmSlotIds(['alarm_1'].concat(meaningful));
+};
+
+KoreanRadioAlarm.prototype._discoverAlarmIdsFromKeys = function () {
+  if (!this.configManager || typeof this.configManager.getKeys !== 'function') {
+    return [];
+  }
+
+  var keys = [];
+  try {
+    keys = this.configManager.getKeys() || [];
+  } catch (e) {
+    return [];
+  }
+
+  var discovered = [];
+  var dedup = {};
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var match = ALARM_SLOT_FIELD_REGEXP.exec(key);
+    if (!match) {
+      continue;
+    }
+
+    var slotId = 'alarm_' + match[1];
+    if (!dedup[slotId]) {
+      dedup[slotId] = true;
+      discovered.push(slotId);
+    }
+  }
+
+  return normalizeAlarmSlotIds(discovered);
+};
+
+KoreanRadioAlarm.prototype._hasMeaningfulSlotConfigValues = function (slotId) {
+  var normalized = normalizeAlarmSlotId(slotId);
+  if (!normalized || !this.configManager || typeof this.configManager.get !== 'function') {
+    return false;
+  }
+
+  var prefix = normalized + '_';
+  var defaults = defaultAlarmConfigForMigration(normalized, this.catalog);
+  var enabled = this._unwrapConfigValue(this.configManager.get(prefix + 'enabled', defaults.alarm_enabled));
+  var hour = this._unwrapConfigValue(this.configManager.get(prefix + 'hour', defaults.alarm_hour));
+  var minute = this._unwrapConfigValue(this.configManager.get(prefix + 'minute', defaults.alarm_minute));
+  var volume = this._unwrapConfigValue(this.configManager.get(prefix + 'volume', defaults.alarm_volume));
+  var station = this._unwrapConfigValue(this.configManager.get(prefix + 'station_uri', defaults.alarm_station_uri));
+  var monday = this._unwrapConfigValue(this.configManager.get(prefix + 'monday', defaults.monday));
+  var tuesday = this._unwrapConfigValue(this.configManager.get(prefix + 'tuesday', defaults.tuesday));
+  var wednesday = this._unwrapConfigValue(this.configManager.get(prefix + 'wednesday', defaults.wednesday));
+  var thursday = this._unwrapConfigValue(this.configManager.get(prefix + 'thursday', defaults.thursday));
+  var friday = this._unwrapConfigValue(this.configManager.get(prefix + 'friday', defaults.friday));
+  var saturday = this._unwrapConfigValue(this.configManager.get(prefix + 'saturday', defaults.saturday));
+  var sunday = this._unwrapConfigValue(this.configManager.get(prefix + 'sunday', defaults.sunday));
+
+  if (!!enabled !== !!defaults.alarm_enabled) {
+    return true;
+  }
+  if (hour !== defaults.alarm_hour || minute !== defaults.alarm_minute || volume !== defaults.alarm_volume) {
+    return true;
+  }
+  if (station !== defaults.alarm_station_uri) {
+    return true;
+  }
+
+  return !!monday !== defaults.monday ||
+    !!tuesday !== defaults.tuesday ||
+    !!wednesday !== defaults.wednesday ||
+    !!thursday !== defaults.thursday ||
+    !!friday !== defaults.friday ||
+    !!saturday !== defaults.saturday ||
+    !!sunday !== defaults.sunday;
+};
+
+KoreanRadioAlarm.prototype._getNextAvailableAlarmId = function (slotIds) {
+  var used = {};
+  for (var i = 0; i < slotIds.length; i++) {
+    used[slotIds[i]] = true;
+  }
+
+  for (var n = 1; n < 1000; n++) {
+    var candidate = 'alarm_' + n;
+    if (!used[candidate]) {
+      return candidate;
+    }
+  }
+
+  return 'alarm_1000';
+};
+
+KoreanRadioAlarm.prototype._saveAlarmIdList = function (slotIds) {
+  var sorted = normalizeAlarmSlotIds(slotIds || []);
+  if (!this.configManager || typeof this.configManager.set !== 'function') {
+    return sorted;
+  }
+
+  this.configManager.set('alarm_ids', sorted.join(','));
+  return sorted;
+};
+
+KoreanRadioAlarm.prototype._setDefaultConfigForSlot = function (slotId) {
+  var defaults = defaultAlarmConfig(slotId, this.catalog);
+  var keys = alarmSlotConfigKeys(slotId);
+  var disabledDefaults = {
+    enabled: false,
+    hour: 7,
+    minute: 0,
+    station_uri: defaults.alarm_station_uri,
+    volume: 45,
+    monday: false,
+    tuesday: false,
+    wednesday: false,
+    thursday: false,
+    friday: false,
+    saturday: false,
+    sunday: false
+  };
+
+  this.configManager.set(keys.enabled, disabledDefaults.enabled);
+  this.configManager.set(keys.hour, disabledDefaults.hour);
+  this.configManager.set(keys.minute, disabledDefaults.minute);
+  this.configManager.set(keys.station, disabledDefaults.station_uri);
+  this.configManager.set(keys.volume, disabledDefaults.volume);
+  this.configManager.set(keys.monday, disabledDefaults.monday);
+  this.configManager.set(keys.tuesday, disabledDefaults.tuesday);
+  this.configManager.set(keys.wednesday, disabledDefaults.wednesday);
+  this.configManager.set(keys.thursday, disabledDefaults.thursday);
+  this.configManager.set(keys.friday, disabledDefaults.friday);
+  this.configManager.set(keys.saturday, disabledDefaults.saturday);
+  this.configManager.set(keys.sunday, disabledDefaults.sunday);
 };
 
 KoreanRadioAlarm.prototype._getWeekdayValuesFromPayload = function (slotId, data, existing) {
@@ -895,9 +1249,12 @@ KoreanRadioAlarm.prototype._normalizeStationValue = function (value) {
 };
 
 KoreanRadioAlarm.prototype._hasSlotConfigValues = function (slotId) {
+  slotId = normalizeAlarmSlotId(slotId);
+  if (!slotId || !this.configManager || typeof this.configManager.get !== 'function') {
+    return false;
+  }
   var prefix = slotId + '_';
-  return ALARM_SLOT_IDS.indexOf(slotId) >= 0 && (
-    this.configManager.get(prefix + 'enabled', undefined) !== undefined ||
+  return this.configManager.get(prefix + 'enabled', undefined) !== undefined ||
     this.configManager.get(prefix + 'hour', undefined) !== undefined ||
     this.configManager.get(prefix + 'minute', undefined) !== undefined ||
     this.configManager.get(prefix + 'station_uri', undefined) !== undefined ||
@@ -908,8 +1265,7 @@ KoreanRadioAlarm.prototype._hasSlotConfigValues = function (slotId) {
     this.configManager.get(prefix + 'thursday', undefined) !== undefined ||
     this.configManager.get(prefix + 'friday', undefined) !== undefined ||
     this.configManager.get(prefix + 'saturday', undefined) !== undefined ||
-    this.configManager.get(prefix + 'sunday', undefined) !== undefined
-  );
+    this.configManager.get(prefix + 'sunday', undefined) !== undefined;
 };
 
 KoreanRadioAlarm.prototype._hasLegacyAlarmValues = function () {
@@ -933,9 +1289,10 @@ KoreanRadioAlarm.prototype._rescheduleAlarm = function () {
   var self = this;
   var scheduleCount = 0;
   var nowEnabled = [];
+  var slotIds = this._getStoredAlarmIds();
   this.alarmConfig = {};
 
-  ALARM_SLOT_IDS.forEach(function (slotId) {
+  slotIds.forEach(function (slotId) {
     var alarmConfig = self._getStoredAlarmConfig(slotId);
     self.alarmConfig[slotId] = alarmConfig;
 
@@ -1374,7 +1731,7 @@ KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
 };
 
 KoreanRadioAlarm.prototype._getStoredAlarmConfig = function (slotId) {
-  slotId = slotId || 'alarm_1';
+  slotId = normalizeAlarmSlotId(slotId) || 'alarm_1';
   var prefix = slotId + '_';
   var defaultStation = AlarmHelpers.firstStationUriFromCatalog(this.catalog) || '';
   var defaults = defaultAlarmConfig(slotId, this.catalog);

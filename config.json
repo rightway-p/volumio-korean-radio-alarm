@@ -1,4 +1,8 @@
 {
+  "alarm_ids": {
+    "type": "string",
+    "value": "alarm_1"
+  },
   "alarm_1_enabled": {
     "type": "boolean",
     "value": false
@@ -44,102 +48,6 @@
     "value": false
   },
   "alarm_1_sunday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_enabled": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_hour": {
-    "type": "number",
-    "value": 7
-  },
-  "alarm_2_minute": {
-    "type": "number",
-    "value": 0
-  },
-  "alarm_2_station_uri": {
-    "type": "string",
-    "value": "korean_radio_alarm://station/kbs-classic-fm"
-  },
-  "alarm_2_volume": {
-    "type": "number",
-    "value": 45
-  },
-  "alarm_2_monday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_tuesday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_wednesday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_thursday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_friday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_saturday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_2_sunday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_enabled": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_hour": {
-    "type": "number",
-    "value": 7
-  },
-  "alarm_3_minute": {
-    "type": "number",
-    "value": 0
-  },
-  "alarm_3_station_uri": {
-    "type": "string",
-    "value": "korean_radio_alarm://station/kbs-classic-fm"
-  },
-  "alarm_3_volume": {
-    "type": "number",
-    "value": 45
-  },
-  "alarm_3_monday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_tuesday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_wednesday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_thursday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_friday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_saturday": {
-    "type": "boolean",
-    "value": false
-  },
-  "alarm_3_sunday": {
     "type": "boolean",
     "value": false
   }

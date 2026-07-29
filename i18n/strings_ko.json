@@ -6,13 +6,19 @@
     "ALARM": "알림 시계",
     "ALARM_SLOT_1": "알림 1",
     "ALARM_SLOT_2": "알림 2",
-    "ALARM_SLOT_3": "알림 3"
+    "ALARM_SLOT_3": "알림 3",
+    "ALARM_SLOT": "알림"
   },
   "BUTTON": {
-    "SAVE": "저장"
+    "SAVE": "저장",
+    "ADD_ALARM": "알람 추가",
+    "DELETE_ALARM": "알람 삭제"
   },
   "ALARM": {
     "TITLE": "Korean Radio Alarm",
+    "ADD_SUCCESS": "알람이 추가되었습니다",
+    "DELETE_MISSING_SLOT": "슬롯 정보가 없습니다",
+    "DELETE_SUCCESS": "알람이 삭제되었습니다",
     "ENABLED": "알람 사용",
     "HOUR": "시",
     "MINUTE": "분",

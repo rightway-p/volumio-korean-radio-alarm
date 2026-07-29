@@ -5,8 +5,8 @@ A Volumio 4 Bookworm music service plugin that adds Korean radio browsing plus a
 ## Features
 
 - Browse grouped Korean radio stations in the Volumio browse section.
-- Configure up to three independent alarm slots.
-- Each slot supports own time, station, volume, and weekday schedule.
+- Configure an unlimited number of independent alarm slots (dynamic add/delete from the UI).
+- Slots support their own time, station, volume, and weekday schedule.
 - Volumio 4 Bookworm compatibility (`engines.node >= 20`, `volumio >= 4`, `os: ["bookworm"]`).
 - No additional system dependencies and no runtime writes to `/volumio` or `/myvolumio`.
 - KBS stations resolve through the KBS play API and memoize stream URLs in-memory during runtime, which can reduce repeated stream start latency without changing playback behavior.
@@ -25,12 +25,12 @@ A Volumio 4 Bookworm music service plugin that adds Korean radio browsing plus a
 
 `MBC`, `SBS`, and `Listen.moe K-pop` are currently omitted because stream stability and playback compatibility need additional validation before re-adding.
 
-## Default config for 3 alarm slots
+## Default config for dynamic alarm slots
 
-`config.json` ships with defaults for `alarm_1`, `alarm_2`, and `alarm_3`.
+`config.json` ships with defaults for `alarm_ids` and `alarm_1`.
 
+- `alarm_ids`: comma-separated active slot IDs (`alarm_1` by default)
 - `alarm_1`: enabled=false, weekdays Mon-Fri=true, Sat/Sun=false
-- `alarm_2`, `alarm_3`: enabled=false, all weekdays=false
 - all slots use `korean_radio_alarm://station/kbs-classic-fm` as default station
 
 Legacy single-slot config keys are still supported for migration.

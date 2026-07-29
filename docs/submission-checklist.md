@@ -7,9 +7,9 @@
   - `volumio >= 4`
   - `volumio_info.os = ["bookworm"]`
   - `architectures = ["amd64", "armhf"]`
-- [ ] Verify package version and lockfile version are aligned (`0.1.1`).
+- [ ] Verify package version and lockfile version are aligned (`0.1.3`).
 - [ ] Verify install/uninstall scripts are executable.
-- [ ] Verify default `config.json` contains `alarm_1`, `alarm_2`, `alarm_3` defaults.
+- [ ] Verify default `config.json` contains `alarm_ids` and `alarm_1`.
 
 ## Local validation
 
@@ -37,7 +37,7 @@
   - enable `alarm_1` for current minute +1 and matching weekday
   - wait for trigger
   - confirm alarm wakes and plays selected station
-  - confirm `alarm_1` and `alarm_2`/`alarm_3` values persist after restart
+  - confirm `alarm_ids` and saved alarm slot values persist after restart
 - [ ] Uninstall test:
   - run uninstall flow and confirm no browse source remains
 

@@ -6,13 +6,19 @@
     "ALARM": "Alarm",
     "ALARM_SLOT_1": "Alarm 1",
     "ALARM_SLOT_2": "Alarm 2",
-    "ALARM_SLOT_3": "Alarm 3"
+    "ALARM_SLOT_3": "Alarm 3",
+    "ALARM_SLOT": "Alarm Slot"
   },
   "BUTTON": {
-    "SAVE": "Save"
+    "SAVE": "Save",
+    "ADD_ALARM": "Add alarm",
+    "DELETE_ALARM": "Delete alarm"
   },
   "ALARM": {
     "TITLE": "Korean Radio Alarm",
+    "ADD_SUCCESS": "Alarm added successfully",
+    "DELETE_MISSING_SLOT": "No slot provided",
+    "DELETE_SUCCESS": "Alarm deleted successfully",
     "ENABLED": "Enable alarm",
     "HOUR": "Hour",
     "MINUTE": "Minute",
