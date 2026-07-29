@@ -48,11 +48,6 @@
           "id": "cbs-music-fm",
           "name": "CBS Music FM",
           "streamUrl": "https://m-aac.cbs.co.kr/cbs939/_definst_/cbs939.stream/playlist.m3u8"
-        },
-        {
-          "id": "listen-moe-kpop",
-          "name": "Listen.moe K-pop",
-          "streamUrl": "https://listen.moe/kpop/fallback"
         }
       ]
     }

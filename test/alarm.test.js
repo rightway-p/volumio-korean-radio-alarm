@@ -384,6 +384,14 @@ test('radio station catalog removes unstable groups and adds KBS production-safe
 
   assert.strictEqual(groupIds.includes('mbc'), false);
   assert.strictEqual(groupIds.includes('sbs'), false);
+  var musicGroup = catalog.groups.find(function (group) {
+    return group.id === 'music';
+  });
+  var musicStations = musicGroup && Array.isArray(musicGroup.stations) ? musicGroup.stations : [];
+  var hasListenMoe = musicStations.some(function (station) {
+    return station.id === 'listen-moe-kpop';
+  });
+  assert.strictEqual(hasListenMoe, false);
 
   var kbs = catalog.groups.find(function (group) {
     return group.id === 'kbs';
