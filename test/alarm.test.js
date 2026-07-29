@@ -8,8 +8,12 @@ const {
   isValidTime,
   buildCronExpressions,
   stationOptionsFromCatalog,
-  findStationByUri
+  findStationByUri,
+  STATION_URI_PREFIX,
+  SOURCE_URI
 } = require('../lib/alarm');
+
+const KoreanRadioAlarm = require('..');
 
 test('normalizeSelectValue accepts Volumio select objects', () => {
   assert.strictEqual(normalizeSelectValue({ value: '30', label: '30' }, 0, 59, 5, null), 30);
@@ -48,25 +52,110 @@ test('stationOptionsFromCatalog flattens catalog preserving group labels', () =>
         id: 'kbs',
         name: 'KBS',
         stations: [
-          { id: 'one', name: 'KBS One', streamUrl: 'https://example.com/one', uri: 'korean_radio_alarm://station/one' },
-          { id: 'two', name: 'KBS Two', streamUrl: 'https://example.com/two', uri: 'korean_radio_alarm://station/two' }
+          { id: 'one', name: 'KBS One', streamUrl: 'https://example.com/one', uri: STATION_URI_PREFIX + 'one' },
+          { id: 'two', name: 'KBS Two', streamUrl: 'https://example.com/two', uri: STATION_URI_PREFIX + 'two' }
         ]
       },
       {
         id: 'mbc',
         name: 'MBC',
         stations: [
-          { id: 'three', name: 'MBC FM', streamUrl: 'https://example.com/three', uri: 'korean_radio_alarm://station/three' }
+          { id: 'three', name: 'MBC FM', streamUrl: 'https://example.com/three', uri: STATION_URI_PREFIX + 'three' }
         ]
       }
     ]
   });
 
   assert.deepStrictEqual(options, [
-    { value: 'korean_radio_alarm://station/one', label: 'KBS - KBS One' },
-    { value: 'korean_radio_alarm://station/two', label: 'KBS - KBS Two' },
-    { value: 'korean_radio_alarm://station/three', label: 'MBC - MBC FM' }
+    { value: STATION_URI_PREFIX + 'one', label: 'KBS - KBS One' },
+    { value: STATION_URI_PREFIX + 'two', label: 'KBS - KBS Two' },
+    { value: STATION_URI_PREFIX + 'three', label: 'MBC - MBC FM' }
   ]);
+});
+
+function createPlugin(coreCommand) {
+  var plugin = new KoreanRadioAlarm({
+    coreCommand: coreCommand || {},
+    logger: { info: function () {}, error: function () {} }
+  });
+
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          { id: 'classic', name: 'KBS Classic FM', streamUrl: 'https://example.com/stream' }
+        ]
+      }
+    ]
+  };
+
+  return plugin;
+}
+
+test('browse source registration uses addToBrowseSources when available', () => {
+  var addCalls = [];
+  var plugin = createPlugin({
+    addToBrowseSources: function (entry) {
+      addCalls.push(entry);
+    }
+  });
+
+  plugin._addBrowseSource();
+
+  assert.strictEqual(addCalls.length, 1);
+  assert.strictEqual(addCalls[0].uri, SOURCE_URI);
+  assert.strictEqual(addCalls[0].source, 'korean_radio_alarm');
+  assert.strictEqual(addCalls[0].sourceicon, 'fa-clock-o');
+  assert.strictEqual(addCalls[0].albumart, '/albumart?source=korean_radio_alarm');
+});
+
+test('browse source registration falls back to volumioAddToBrowseSources', () => {
+  var fallbackCalls = [];
+  var plugin = createPlugin({
+    volumioAddToBrowseSources: function (entry) {
+      fallbackCalls.push(entry);
+    }
+  });
+
+  plugin._addBrowseSource();
+
+  assert.strictEqual(fallbackCalls.length, 1);
+});
+
+test('remove browse source calls compatible command router remove method', () => {
+  var removedUri;
+  var plugin = createPlugin({
+    removeBrowseSource: function (uri) {
+      removedUri = uri;
+    }
+  });
+
+  plugin._removeBrowseSource();
+
+  assert.strictEqual(removedUri, SOURCE_URI);
+});
+
+test('handleBrowseUri and explodeUri stay consistent with station option URIs', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+
+  var option = stationOptionsFromCatalog(plugin.catalog)[0];
+  var tracks = await plugin.explodeUri(option.value);
+  var root = await plugin.handleBrowseUri(SOURCE_URI);
+  var groupNavigation = await plugin.handleBrowseUri(SOURCE_URI + 'group/kbs');
+
+  assert.strictEqual(Array.isArray(tracks), true);
+  assert.strictEqual(tracks.length, 1);
+  assert.strictEqual(tracks[0].uri, option.value);
+  assert.strictEqual(root.navigation.prev.uri, SOURCE_URI);
+  assert.strictEqual(groupNavigation.navigation.lists[0].items[0].uri, option.value);
+  assert.strictEqual(groupNavigation.navigation.prev.uri, SOURCE_URI);
+  assert.strictEqual(option.value, STATION_URI_PREFIX + 'classic');
 });
 
 test('findStationByUri resolves both direct ids and uri values', () => {
@@ -76,14 +165,14 @@ test('findStationByUri resolves both direct ids and uri values', () => {
         id: 'news',
         name: 'News',
         stations: [
-          { id: 'ytn', name: 'YTN', streamUrl: 'https://example.com/ytn', uri: 'korean_radio_alarm://station/ytn' }
+          { id: 'ytn', name: 'YTN', streamUrl: 'https://example.com/ytn', uri: STATION_URI_PREFIX + 'ytn' }
         ]
       }
     ]
   };
 
-  const byUri = findStationByUri(catalog, 'korean_radio_alarm://station/ytn');
-  const byUriObject = findStationByUri(catalog, { value: 'korean_radio_alarm://station/ytn', label: 'YTN' });
+  const byUri = findStationByUri(catalog, STATION_URI_PREFIX + 'ytn');
+  const byUriObject = findStationByUri(catalog, { value: STATION_URI_PREFIX + 'ytn', label: 'YTN' });
   const byId = findStationByUri(catalog, 'ytn');
   const missing = findStationByUri(catalog, 'unknown');
 

@@ -10,8 +10,10 @@ var VConf = require('v-conf');
 var AlarmHelpers = require('./lib/alarm');
 
 var PLUGIN_NAME = 'korean_radio_alarm';
-var SOURCE_URI = 'korean_radio_alarm://';
 var SOURCE_ID = 'korean_radio_alarm';
+var SOURCE_URI = AlarmHelpers.SOURCE_URI || 'korean_radio_alarm://';
+var STATION_URI_PREFIX = AlarmHelpers.STATION_URI_PREFIX || (SOURCE_URI + 'station/');
+var BROWSE_SOURCE_NAME = 'Korean Radio Alarm';
 
 function KoreanRadioAlarm(context) {
   this.context = context;
@@ -159,6 +161,46 @@ function readJsonOrDefault(filePath, fallback) {
   }
 
   return fallback;
+}
+
+function addBrowseSource(context, source) {
+  if (!context) {
+    return null;
+  }
+
+  if (typeof context.addToBrowseSources === 'function') {
+    return context.addToBrowseSources(source);
+  }
+
+  if (typeof context.volumioAddToBrowseSources === 'function') {
+    return context.volumioAddToBrowseSources(source);
+  }
+
+  return null;
+}
+
+function removeBrowseSource(context, sourceUri) {
+  if (!context) {
+    return null;
+  }
+
+  if (typeof context.removeBrowseSource === 'function') {
+    return context.removeBrowseSource(sourceUri);
+  }
+
+  if (typeof context.volumioRemoveBrowseSource === 'function') {
+    return context.volumioRemoveBrowseSource(sourceUri);
+  }
+
+  if (typeof context.volumioRemoveBrowseSources === 'function') {
+    return context.volumioRemoveBrowseSources(sourceUri);
+  }
+
+  if (typeof context.removeFromBrowseSources === 'function') {
+    return context.removeFromBrowseSources(sourceUri);
+  }
+
+  return null;
 }
 
 KoreanRadioAlarm.prototype.onVolumioStart = function () {
@@ -365,7 +407,7 @@ KoreanRadioAlarm.prototype.explodeUri = function (uri) {
   var track = {
     service: PLUGIN_NAME,
     type: 'track',
-    uri: station.uri || ('korean_radio_alarm://station/' + station.id),
+    uri: station.uri || (STATION_URI_PREFIX + station.id),
     realUri: station.streamUrl,
     path: station.streamUrl,
     name: station.name,
@@ -378,7 +420,7 @@ KoreanRadioAlarm.prototype.explodeUri = function (uri) {
 KoreanRadioAlarm.prototype.handleBrowseUri = function (uri) {
   uri = uri || SOURCE_URI;
 
-  if (uri === SOURCE_URI || uri === 'korean_radio_alarm://') {
+  if (uri === SOURCE_URI) {
     return this._buildRootNavigation();
   }
 
@@ -456,7 +498,7 @@ KoreanRadioAlarm.prototype._onAlarmFire = function () {
 
   return this._setAlarmVolume(this.alarmConfig.alarm_volume)
     .then(function () {
-      return self.explodeUri(station.uri || ('korean_radio_alarm://station/' + station.id));
+      return self.explodeUri(station.uri || (STATION_URI_PREFIX + station.id));
     })
     .then(function (tracks) {
       if (!Array.isArray(tracks) || tracks.length === 0) {
@@ -601,20 +643,22 @@ KoreanRadioAlarm.prototype._clearScheduledJobs = function () {
 };
 
 KoreanRadioAlarm.prototype._addBrowseSource = function () {
-  if (!this.commandRouter || typeof this.commandRouter.volumioAddToBrowseSources !== 'function') {
+  if (!this.commandRouter) {
     return;
   }
 
   var entry = {
-    name: this._t('ALARM.TITLE', 'Korean Radio Alarm'),
+    name: this._t('ALARM.TITLE', BROWSE_SOURCE_NAME),
     uri: SOURCE_URI,
     plugin_name: PLUGIN_NAME,
     plugin_type: 'music_service',
     source: SOURCE_ID,
-    icon: 'fa-clock-o'
+    icon: 'fa-clock-o',
+    sourceicon: 'fa-clock-o',
+    albumart: '/albumart?source=' + SOURCE_ID
   };
 
-  this.commandRouter.volumioAddToBrowseSources(entry);
+  addBrowseSource(this.commandRouter, entry);
 };
 
 KoreanRadioAlarm.prototype._removeBrowseSource = function () {
@@ -622,19 +666,7 @@ KoreanRadioAlarm.prototype._removeBrowseSource = function () {
     return;
   }
 
-  if (typeof this.commandRouter.volumioRemoveBrowseSource === 'function') {
-    this.commandRouter.volumioRemoveBrowseSource(SOURCE_URI);
-    return;
-  }
-
-  if (typeof this.commandRouter.volumioRemoveBrowseSources === 'function') {
-    this.commandRouter.volumioRemoveBrowseSources(SOURCE_URI);
-    return;
-  }
-
-  if (typeof this.commandRouter.removeFromBrowseSources === 'function') {
-    this.commandRouter.removeFromBrowseSources(SOURCE_URI);
-  }
+  removeBrowseSource(this.commandRouter, SOURCE_URI);
 };
 
 KoreanRadioAlarm.prototype._setAlarmVolume = function (volume) {
@@ -729,7 +761,7 @@ KoreanRadioAlarm.prototype._buildGroupNavigation = function (groupId) {
       album: target.name || target.id,
       artist: target.name || target.id,
       icon: 'fa-broadcast-tower',
-      uri: station.uri || ('korean_radio_alarm://station/' + station.id),
+      uri: station.uri || (STATION_URI_PREFIX + station.id),
       path: station.streamUrl,
       realUri: station.streamUrl
     };
@@ -765,7 +797,7 @@ KoreanRadioAlarm.prototype._ensureStationUris = function () {
 
     group.stations.forEach(function (station) {
       if (!station.uri && station.id) {
-        station.uri = 'korean_radio_alarm://station/' + station.id;
+        station.uri = STATION_URI_PREFIX + station.id;
       }
     });
   });
