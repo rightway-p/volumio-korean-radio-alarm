@@ -18,6 +18,7 @@ var BROWSE_SOURCE_NAME = 'Korean Radio Alarm';
 var WEBRADIO_SERVICE = 'webradio';
 var KBS_PLAY_API_URL_BASE = 'https://static.api.kbs.co.kr/play/1.2/live/channel/';
 var KBS_PLAY_API_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwbGF0Zm9ybUlkIjoia2JzLWhvbWUiLCJ1c2VySWQiOiIiLCJkYXRhIjoiIiwic2NvcGUiOlsiZGVmYXVsdCIsImFkbWluIl0sInRva2VuRXhwaXJlVGltZSI6MjIyNDkxMTMwODIwM30.hb4K_Wn2ekzNO84xfAOrPnj2OyAeRt7HgSr2TzgQvJQ';
+var STREAM_RESOLVER_CACHE_TTL_MS = 20 * 60 * 1000;
 var ALARM_SLOT_IDS = ['alarm_1', 'alarm_2', 'alarm_3'];
 var WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -36,6 +37,8 @@ function KoreanRadioAlarm(context) {
 
   this.pluginName = PLUGIN_NAME;
   this.scheduledJobs = [];
+  this._streamResolverCache = {};
+  this._streamResolverInFlight = {};
   this.alarmConfig = null;
   this.i18n = null;
   this.mpdPlugin = null;
@@ -160,6 +163,10 @@ function toLabel(value, width) {
 function stripSlotIdPrefix(fieldId) {
   var match = /^alarm_[1-3]_(.+)$/.exec(fieldId);
   return match ? match[1] : '';
+}
+
+function streamResolverCacheKey(resolverType, channelId) {
+  return resolverType + ':' + channelId;
 }
 
 function getSlotIdForKey(key) {
@@ -295,6 +302,14 @@ KoreanRadioAlarm.prototype.onStart = function () {
 
       self._addBrowseSource();
       self._rescheduleAlarm();
+      safePromise(function () {
+        return self._warmUpStreamResolverCache();
+      }).fail(function (err) {
+        if (self.logger && typeof self.logger.error === 'function') {
+          var message = err && err.message ? err.message : 'Unknown error';
+          self.logger.error('KBS stream resolver warm-up failed: ' + message);
+        }
+      });
     });
 };
 
@@ -1100,7 +1115,7 @@ KoreanRadioAlarm.prototype._buildGroupNavigation = function (groupId) {
     var streamPath = station.streamUrl || '';
     var item = {
       service: PLUGIN_NAME,
-      type: 'song',
+      type: 'webradio',
       stationUri: STATION_URI_PREFIX + station.id,
       trackType: 'webradio',
       duration: 0,
@@ -1222,6 +1237,69 @@ KoreanRadioAlarm.prototype._requestJson = function (url, options) {
   return defer.promise;
 };
 
+KoreanRadioAlarm.prototype._getCachedResolvedStreamUrl = function (cacheKey) {
+  var cacheEntry = this._streamResolverCache[cacheKey];
+  if (!cacheEntry) {
+    return null;
+  }
+
+  if (!cacheEntry.streamUrl || cacheEntry.expiresAt <= Date.now()) {
+    delete this._streamResolverCache[cacheKey];
+    return null;
+  }
+
+  return cacheEntry.streamUrl;
+};
+
+KoreanRadioAlarm.prototype._setStreamResolverCache = function (cacheKey, streamUrl) {
+  this._streamResolverCache[cacheKey] = {
+    streamUrl: streamUrl,
+    expiresAt: Date.now() + STREAM_RESOLVER_CACHE_TTL_MS
+  };
+};
+
+KoreanRadioAlarm.prototype._warmUpStreamResolverCache = function () {
+  var self = this;
+
+  if (!self.catalog || !Array.isArray(self.catalog.groups)) {
+    return libQ.resolve();
+  }
+
+  var stationsByResolver = {};
+  self.catalog.groups.forEach(function (group) {
+    if (!group || !Array.isArray(group.stations)) {
+      return;
+    }
+
+    group.stations.forEach(function (station) {
+      if (!station || !station.streamResolver || !station.streamResolver.type) {
+        return;
+      }
+
+      var resolverType = station.streamResolver.type;
+      var channelId = station.streamResolver.channelId;
+      if (typeof resolverType !== 'string' || !resolverType.length || typeof channelId !== 'string' || !channelId.length) {
+        return;
+      }
+
+      stationsByResolver[streamResolverCacheKey(resolverType, channelId)] = station;
+    });
+  });
+
+  var warmups = [];
+  Object.keys(stationsByResolver).forEach(function (cacheKey) {
+    warmups.push(self._resolveStationStreamUrl(stationsByResolver[cacheKey]).then(function () {
+      return true;
+    }));
+  });
+
+  if (warmups.length === 0) {
+    return libQ.resolve();
+  }
+
+  return libQ.all(warmups);
+};
+
 KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
   var self = this;
 
@@ -1243,12 +1321,22 @@ KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
       return libQ.reject(new Error('Missing channelId for KBS play resolver on station ' + station.id));
     }
 
+    var cacheKey = streamResolverCacheKey(station.streamResolver.type, channelId);
+    var cachedStreamUrl = self._getCachedResolvedStreamUrl(cacheKey);
+    if (cachedStreamUrl) {
+      return libQ.resolve(cachedStreamUrl);
+    }
+
+    if (self._streamResolverInFlight[cacheKey]) {
+      return self._streamResolverInFlight[cacheKey];
+    }
+
     var endpoint = KBS_PLAY_API_URL_BASE + encodeURIComponent(channelId);
     var headers = {
       Authorization: KBS_PLAY_API_AUTHORIZATION
     };
 
-    return safePromise(function () {
+    var resolvedPromise = safePromise(function () {
       return self._requestJson(endpoint, { headers: headers });
     }).then(function (payload) {
       if (!payload || typeof payload.streamUrl !== 'string' || !payload.streamUrl) {
@@ -1260,6 +1348,9 @@ KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
       }
 
       return payload.streamUrl;
+    }).then(function (streamUrl) {
+      self._setStreamResolverCache(cacheKey, streamUrl);
+      return streamUrl;
     }).fail(function (err) {
       if (self.logger && typeof self.logger.error === 'function') {
         var message = err && err.message ? err.message : 'Unknown error';
@@ -1267,6 +1358,16 @@ KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
       }
       throw err;
     });
+
+    self._streamResolverInFlight[cacheKey] = resolvedPromise.then(function (streamUrl) {
+      delete self._streamResolverInFlight[cacheKey];
+      return streamUrl;
+    }, function (err) {
+      delete self._streamResolverInFlight[cacheKey];
+      throw err;
+    });
+
+    return self._streamResolverInFlight[cacheKey];
   }
 
   return libQ.reject(new Error('Unsupported stream resolver type ' + station.streamResolver.type + ' for station ' + station.id));

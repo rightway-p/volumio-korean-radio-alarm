@@ -7,17 +7,26 @@
         {
           "id": "kbs-classic-fm",
           "name": "KBS Classic FM",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=1fm"
+          "streamResolver": {
+            "type": "kbs-play-api",
+            "channelId": "1fm"
+          }
         },
         {
           "id": "kbs-cool-fm",
           "name": "KBS Cool FM",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=2fm"
+          "streamResolver": {
+            "type": "kbs-play-api",
+            "channelId": "2fm"
+          }
         },
         {
           "id": "kbs-hanminjok",
           "name": "KBS Hanminjok",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=hanminjok"
+          "streamResolver": {
+            "type": "kbs-play-api",
+            "channelId": "hanminjokradio"
+          }
         },
         {
           "id": "kbs-world-radio",

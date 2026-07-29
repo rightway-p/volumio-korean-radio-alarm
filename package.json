@@ -1,6 +1,6 @@
 {
   "name": "korean_radio_alarm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Korean radio music service with a configurable weekly alarm for Volumio 4 Bookworm.",
   "main": "index.js",
   "author": "rightway-p",
@@ -31,7 +31,7 @@
       "bookworm"
     ],
     "details": "Scheduled Korean radio alarm plugin for Volumio 4 (Bookworm).",
-    "changelog": "0.1.1: review-prep/default alarm-slot config and submission readiness updates; 0.1.0: initial release."
+    "changelog": "0.1.2: resolve KBS stream URLs through KBS play API and cache resolver results in-memory; 0.1.1: review-prep/default alarm-slot config and submission readiness updates; 0.1.0: initial release."
   },
   "repository": {
     "type": "git",

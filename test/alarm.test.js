@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const libQ = require('kew');
 
 const {
   normalizeSelectValue,
@@ -401,11 +402,23 @@ test('radio station catalog removes unstable groups and adds KBS production-safe
   var hanminjok = kbs.stations.find(function (station) {
     return station.id === 'kbs-hanminjok';
   });
+  var classic = kbs.stations.find(function (station) {
+    return station.id === 'kbs-classic-fm';
+  });
+  var cool = kbs.stations.find(function (station) {
+    return station.id === 'kbs-cool-fm';
+  });
   var world = kbs.stations.find(function (station) {
     return station.id === 'kbs-world-radio';
   });
 
+  assert.strictEqual(classic.streamResolver.type, 'kbs-play-api');
+  assert.strictEqual(classic.streamResolver.channelId, '1fm');
+  assert.strictEqual(cool.streamResolver.type, 'kbs-play-api');
+  assert.strictEqual(cool.streamResolver.channelId, '2fm');
   assert.strictEqual(hanminjok.name, 'KBS Hanminjok');
+  assert.strictEqual(hanminjok.streamResolver.type, 'kbs-play-api');
+  assert.strictEqual(hanminjok.streamResolver.channelId, 'hanminjokradio');
   assert.strictEqual(world.streamResolver.type, 'kbs-play-api');
   assert.strictEqual(world.streamResolver.channelId, 'worldradio');
 });
@@ -500,6 +513,33 @@ test('onStart succeeds when i18nJson requires UIConfig path and still registers 
   assert.strictEqual(browseEntries[0].source, 'korean_radio_alarm');
 });
 
+test('onStart continues when resolver cache warm-up fails in background', async () => {
+  var browseEntries = [];
+  var warmUpCalled = false;
+  var plugin = createPlugin({
+    addToBrowseSources: function (entry) {
+      browseEntries.push(entry);
+    },
+    i18nJson: function (_requested, _fallback, uiConfigPath) {
+      if (!uiConfigPath) {
+        throw new TypeError('The "path" argument must be of type string or an instance of Buffer or URL. Received undefined');
+      }
+      return {};
+    }
+  });
+
+  plugin._warmUpStreamResolverCache = function () {
+    warmUpCalled = true;
+    return libQ.reject(new Error('warm-up request failed'));
+  };
+
+  await plugin.onStart();
+
+  assert.strictEqual(warmUpCalled, true);
+  assert.strictEqual(browseEntries.length, 1);
+  assert.strictEqual(browseEntries[0].source, 'korean_radio_alarm');
+});
+
 test('remove browse source calls compatible command router remove method', () => {
   var removedUri;
   var plugin = createPlugin({
@@ -535,6 +575,7 @@ test('handleBrowseUri and explodeUri stay consistent with station option URIs', 
   assert.strictEqual(root.navigation.prev.uri, SOURCE_URI);
   assert.strictEqual(groupNavigation.navigation.lists[0].items[0].uri, option.value);
   assert.strictEqual(groupNavigation.navigation.lists[0].items[0].service, 'korean_radio_alarm');
+  assert.strictEqual(groupNavigation.navigation.lists[0].items[0].type, 'webradio');
   assert.strictEqual(groupNavigation.navigation.lists[0].items[0].trackType, 'webradio');
   assert.strictEqual(groupNavigation.navigation.lists[0].items[0].duration, 0);
   assert.strictEqual(groupNavigation.navigation.lists[0].items[0].realUri, 'https://example.com/stream');
@@ -586,6 +627,49 @@ test('explodeUri resolves dynamic streamResolver urls before playback', async ()
   assert.strictEqual(tracks[0].uri, 'https://kbs-world.live/playlist.m3u8');
   assert.strictEqual(tracks[0].realUri, 'https://kbs-world.live/playlist.m3u8');
   assert.strictEqual(tracks[0].path, 'https://kbs-world.live/playlist.m3u8');
+});
+
+test('explodeUri reuses resolved stream URL for the same kbs-play-api resolver', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+  var requestCount = 0;
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          {
+            id: 'world-radio',
+            name: 'KBS World Radio',
+            streamResolver: {
+              type: 'kbs-play-api',
+              channelId: 'worldradio'
+            }
+          }
+        ]
+      }
+    ]
+  };
+  plugin._ensureStationUris && plugin._ensureStationUris();
+  plugin._requestJson = function (url) {
+    requestCount += 1;
+    assert.strictEqual(url, 'https://static.api.kbs.co.kr/play/1.2/live/channel/worldradio');
+    return Promise.resolve({
+      streamUrl: 'https://kbs-world.live/playlist.m3u8'
+    });
+  };
+
+  var first = await plugin.explodeUri(STATION_URI_PREFIX + 'world-radio');
+  var second = await plugin.explodeUri(STATION_URI_PREFIX + 'world-radio');
+
+  assert.strictEqual(requestCount, 1);
+  assert.strictEqual(first[0].uri, 'https://kbs-world.live/playlist.m3u8');
+  assert.strictEqual(second[0].uri, 'https://kbs-world.live/playlist.m3u8');
+  assert.strictEqual(first[0].uri, second[0].uri);
 });
 
 test('explodeUri rejects dynamic resolver payload without streamUrl', async () => {
