@@ -163,6 +163,29 @@ function readJsonOrDefault(filePath, fallback) {
   return fallback;
 }
 
+function resolveLanguageCode(commandRouter) {
+  var sharedVars = commandRouter && commandRouter.sharedVars ? commandRouter.sharedVars : null;
+  if (sharedVars) {
+    var sharedLanguage;
+    if (typeof sharedVars.get === 'function') {
+      sharedLanguage = sharedVars.get('language_code');
+    } else if (typeof sharedVars.language_code === 'string') {
+      sharedLanguage = sharedVars.language_code;
+    }
+
+    if (typeof sharedLanguage === 'string' && sharedLanguage.length > 0) {
+      return sharedLanguage;
+    }
+  }
+
+  var lang = commandRouter && commandRouter.getLanguage ? commandRouter.getLanguage() : null;
+  if (typeof lang === 'string' && lang.length > 0) {
+    return lang;
+  }
+
+  return 'en';
+}
+
 function addBrowseSource(context, source) {
   if (!context) {
     return null;
@@ -246,7 +269,7 @@ KoreanRadioAlarm.prototype.getConfigurationFiles = function () {
 
 KoreanRadioAlarm.prototype.getUIConfig = function () {
   var self = this;
-  var lang = this.commandRouter && this.commandRouter.getLanguage ? this.commandRouter.getLanguage() : 'en';
+  var lang = resolveLanguageCode(this.commandRouter);
 
   return safePromise(function () {
     if (!self.commandRouter || typeof self.commandRouter.i18nJson !== 'function') {
@@ -510,24 +533,21 @@ KoreanRadioAlarm.prototype._onAlarmFire = function () {
 
 KoreanRadioAlarm.prototype._loadI18n = function () {
   var self = this;
-  var lang = this.commandRouter && this.commandRouter.getLanguage ? this.commandRouter.getLanguage() : 'en';
+  var lang = resolveLanguageCode(this.commandRouter);
   var requested = path.join(__dirname, 'i18n', 'strings_' + lang + '.json');
   var fallback = path.join(__dirname, 'i18n', 'strings_en.json');
 
-  if (!this.commandRouter || typeof this.commandRouter.i18nJson !== 'function') {
-    this.i18n = readJsonOrDefault(fallback, {});
-    return libQ.resolve(this.i18n);
+  var i18n = readJsonOrDefault(requested, null);
+  if (!i18n || typeof i18n !== 'object') {
+    i18n = readJsonOrDefault(fallback, {});
   }
 
-  return safePromise(function () {
-    return self.commandRouter.i18nJson(requested, fallback);
-  }).then(function (json) {
-    if (json && typeof json === 'object') {
-      self.i18n = json;
-    }
+  if (!i18n || typeof i18n !== 'object') {
+    i18n = {};
+  }
 
-    return self.i18n;
-  });
+  self.i18n = i18n;
+  return libQ.resolve(self.i18n);
 };
 
 KoreanRadioAlarm.prototype._t = function (path, fallback) {

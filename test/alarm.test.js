@@ -124,6 +124,26 @@ test('browse source registration falls back to volumioAddToBrowseSources', () =>
   assert.strictEqual(fallbackCalls.length, 1);
 });
 
+test('onStart succeeds when i18nJson requires UIConfig path and still registers browse source', async () => {
+  var browseEntries = [];
+  var plugin = createPlugin({
+    addToBrowseSources: function (entry) {
+      browseEntries.push(entry);
+    },
+    i18nJson: function (_requested, _fallback, uiConfigPath) {
+      if (!uiConfigPath) {
+        throw new TypeError('The "path" argument must be of type string or an instance of Buffer or URL. Received undefined');
+      }
+      return {};
+    }
+  });
+
+  await plugin.onStart();
+
+  assert.strictEqual(browseEntries.length, 1);
+  assert.strictEqual(browseEntries[0].source, 'korean_radio_alarm');
+});
+
 test('remove browse source calls compatible command router remove method', () => {
   var removedUri;
   var plugin = createPlugin({
