@@ -3,7 +3,10 @@
     "LABEL": "Korean Radio Alarm"
   },
   "SECTION": {
-    "ALARM": "Alarm"
+    "ALARM": "Alarm",
+    "ALARM_SLOT_1": "Alarm 1",
+    "ALARM_SLOT_2": "Alarm 2",
+    "ALARM_SLOT_3": "Alarm 3"
   },
   "BUTTON": {
     "SAVE": "Save"

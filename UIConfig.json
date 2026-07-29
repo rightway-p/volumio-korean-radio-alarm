@@ -9,9 +9,9 @@
   },
   "sections": [
     {
-      "id": "alarm_settings",
+      "id": "alarm_settings_1",
       "element": "section",
-      "label": "TRANSLATE.SECTION.ALARM",
+      "label": "TRANSLATE.SECTION.ALARM_SLOT_1",
       "icon": "fa-clock-o",
       "onSave": {
         "type": "controller",
@@ -21,33 +21,117 @@
       "saveButton": {
         "label": "TRANSLATE.BUTTON.SAVE",
         "data": [
-          "alarm_enabled",
-          "alarm_hour",
-          "alarm_minute",
-          "alarm_station_uri",
-          "alarm_volume",
-          "monday",
-          "tuesday",
-          "wednesday",
-          "thursday",
-          "friday",
-          "saturday",
-          "sunday"
+          "alarm_1_enabled",
+          "alarm_1_hour",
+          "alarm_1_minute",
+          "alarm_1_station_uri",
+          "alarm_1_volume",
+          "alarm_1_monday",
+          "alarm_1_tuesday",
+          "alarm_1_wednesday",
+          "alarm_1_thursday",
+          "alarm_1_friday",
+          "alarm_1_saturday",
+          "alarm_1_sunday"
         ]
       },
       "content": [
-        { "type": "boolean", "element": "switch", "id": "alarm_enabled", "label": "TRANSLATE.ALARM.ENABLED", "value": false },
-        { "element": "select", "id": "alarm_hour", "label": "TRANSLATE.ALARM.HOUR", "value": 7, "options": [] },
-        { "element": "select", "id": "alarm_minute", "label": "TRANSLATE.ALARM.MINUTE", "value": 0, "options": [] },
-        { "element": "select", "id": "alarm_station_uri", "label": "TRANSLATE.ALARM.STATION", "value": "", "options": [] },
-        { "element": "select", "id": "alarm_volume", "label": "TRANSLATE.ALARM.VOLUME", "value": 45, "options": [] },
-        { "type": "boolean", "element": "switch", "id": "monday", "label": "TRANSLATE.WEEKDAY.MONDAY", "value": false },
-        { "type": "boolean", "element": "switch", "id": "tuesday", "label": "TRANSLATE.WEEKDAY.TUESDAY", "value": false },
-        { "type": "boolean", "element": "switch", "id": "wednesday", "label": "TRANSLATE.WEEKDAY.WEDNESDAY", "value": false },
-        { "type": "boolean", "element": "switch", "id": "thursday", "label": "TRANSLATE.WEEKDAY.THURSDAY", "value": false },
-        { "type": "boolean", "element": "switch", "id": "friday", "label": "TRANSLATE.WEEKDAY.FRIDAY", "value": false },
-        { "type": "boolean", "element": "switch", "id": "saturday", "label": "TRANSLATE.WEEKDAY.SATURDAY", "value": false },
-        { "type": "boolean", "element": "switch", "id": "sunday", "label": "TRANSLATE.WEEKDAY.SUNDAY", "value": false }
+        { "type": "boolean", "element": "switch", "id": "alarm_1_enabled", "label": "TRANSLATE.ALARM.ENABLED", "value": false },
+        { "element": "select", "id": "alarm_1_hour", "label": "TRANSLATE.ALARM.HOUR", "value": 7, "options": [] },
+        { "element": "select", "id": "alarm_1_minute", "label": "TRANSLATE.ALARM.MINUTE", "value": 0, "options": [] },
+        { "element": "select", "id": "alarm_1_station_uri", "label": "TRANSLATE.ALARM.STATION", "value": "", "options": [] },
+        { "element": "select", "id": "alarm_1_volume", "label": "TRANSLATE.ALARM.VOLUME", "value": 45, "options": [] },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_monday", "label": "TRANSLATE.WEEKDAY.MONDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_tuesday", "label": "TRANSLATE.WEEKDAY.TUESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_wednesday", "label": "TRANSLATE.WEEKDAY.WEDNESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_thursday", "label": "TRANSLATE.WEEKDAY.THURSDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_friday", "label": "TRANSLATE.WEEKDAY.FRIDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_saturday", "label": "TRANSLATE.WEEKDAY.SATURDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_1_sunday", "label": "TRANSLATE.WEEKDAY.SUNDAY", "value": false }
+      ]
+    },
+    {
+      "id": "alarm_settings_2",
+      "element": "section",
+      "label": "TRANSLATE.SECTION.ALARM_SLOT_2",
+      "icon": "fa-clock-o",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "music_service/korean_radio_alarm",
+        "method": "saveAlarm"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.BUTTON.SAVE",
+        "data": [
+          "alarm_2_enabled",
+          "alarm_2_hour",
+          "alarm_2_minute",
+          "alarm_2_station_uri",
+          "alarm_2_volume",
+          "alarm_2_monday",
+          "alarm_2_tuesday",
+          "alarm_2_wednesday",
+          "alarm_2_thursday",
+          "alarm_2_friday",
+          "alarm_2_saturday",
+          "alarm_2_sunday"
+        ]
+      },
+      "content": [
+        { "type": "boolean", "element": "switch", "id": "alarm_2_enabled", "label": "TRANSLATE.ALARM.ENABLED", "value": false },
+        { "element": "select", "id": "alarm_2_hour", "label": "TRANSLATE.ALARM.HOUR", "value": 7, "options": [] },
+        { "element": "select", "id": "alarm_2_minute", "label": "TRANSLATE.ALARM.MINUTE", "value": 0, "options": [] },
+        { "element": "select", "id": "alarm_2_station_uri", "label": "TRANSLATE.ALARM.STATION", "value": "", "options": [] },
+        { "element": "select", "id": "alarm_2_volume", "label": "TRANSLATE.ALARM.VOLUME", "value": 45, "options": [] },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_monday", "label": "TRANSLATE.WEEKDAY.MONDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_tuesday", "label": "TRANSLATE.WEEKDAY.TUESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_wednesday", "label": "TRANSLATE.WEEKDAY.WEDNESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_thursday", "label": "TRANSLATE.WEEKDAY.THURSDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_friday", "label": "TRANSLATE.WEEKDAY.FRIDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_saturday", "label": "TRANSLATE.WEEKDAY.SATURDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_2_sunday", "label": "TRANSLATE.WEEKDAY.SUNDAY", "value": false }
+      ]
+    },
+    {
+      "id": "alarm_settings_3",
+      "element": "section",
+      "label": "TRANSLATE.SECTION.ALARM_SLOT_3",
+      "icon": "fa-clock-o",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "music_service/korean_radio_alarm",
+        "method": "saveAlarm"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.BUTTON.SAVE",
+        "data": [
+          "alarm_3_enabled",
+          "alarm_3_hour",
+          "alarm_3_minute",
+          "alarm_3_station_uri",
+          "alarm_3_volume",
+          "alarm_3_monday",
+          "alarm_3_tuesday",
+          "alarm_3_wednesday",
+          "alarm_3_thursday",
+          "alarm_3_friday",
+          "alarm_3_saturday",
+          "alarm_3_sunday"
+        ]
+      },
+      "content": [
+        { "type": "boolean", "element": "switch", "id": "alarm_3_enabled", "label": "TRANSLATE.ALARM.ENABLED", "value": false },
+        { "element": "select", "id": "alarm_3_hour", "label": "TRANSLATE.ALARM.HOUR", "value": 7, "options": [] },
+        { "element": "select", "id": "alarm_3_minute", "label": "TRANSLATE.ALARM.MINUTE", "value": 0, "options": [] },
+        { "element": "select", "id": "alarm_3_station_uri", "label": "TRANSLATE.ALARM.STATION", "value": "", "options": [] },
+        { "element": "select", "id": "alarm_3_volume", "label": "TRANSLATE.ALARM.VOLUME", "value": 45, "options": [] },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_monday", "label": "TRANSLATE.WEEKDAY.MONDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_tuesday", "label": "TRANSLATE.WEEKDAY.TUESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_wednesday", "label": "TRANSLATE.WEEKDAY.WEDNESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_thursday", "label": "TRANSLATE.WEEKDAY.THURSDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_friday", "label": "TRANSLATE.WEEKDAY.FRIDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_saturday", "label": "TRANSLATE.WEEKDAY.SATURDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "alarm_3_sunday", "label": "TRANSLATE.WEEKDAY.SUNDAY", "value": false }
       ]
     }
   ]

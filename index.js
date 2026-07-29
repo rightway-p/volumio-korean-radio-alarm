@@ -18,6 +18,8 @@ var BROWSE_SOURCE_NAME = 'Korean Radio Alarm';
 var WEBRADIO_SERVICE = 'webradio';
 var KBS_PLAY_API_URL_BASE = 'https://static.api.kbs.co.kr/play/1.2/live/channel/';
 var KBS_PLAY_API_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwbGF0Zm9ybUlkIjoia2JzLWhvbWUiLCJ1c2VySWQiOiIiLCJkYXRhIjoiIiwic2NvcGUiOlsiZGVmYXVsdCIsImFkbWluIl0sInRva2VuRXhwaXJlVGltZSI6MjIyNDkxMTMwODIwM30.hb4K_Wn2ekzNO84xfAOrPnj2OyAeRt7HgSr2TzgQvJQ';
+var ALARM_SLOT_IDS = ['alarm_1', 'alarm_2', 'alarm_3'];
+var WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 function KoreanRadioAlarm(context) {
   this.context = context;
@@ -155,6 +157,41 @@ function toLabel(value, width) {
   return str;
 }
 
+function stripSlotIdPrefix(fieldId) {
+  var match = /^alarm_[1-3]_(.+)$/.exec(fieldId);
+  return match ? match[1] : '';
+}
+
+function getSlotIdForKey(key) {
+  var match = /^alarm_([1-3])_.+$/.exec(key);
+  if (!match) {
+    return null;
+  }
+  return 'alarm_' + match[1];
+}
+
+function isLegacyAlarmKey(key) {
+  return key === 'alarm_enabled' || key === 'alarm_hour' || key === 'alarm_minute' || key === 'alarm_station_uri' || key === 'alarm_volume' || key === 'monday' || key === 'tuesday' || key === 'wednesday' || key === 'thursday' || key === 'friday' || key === 'saturday' || key === 'sunday';
+}
+
+function defaultAlarmConfig(alarmSlot, catalog) {
+  var defaultStation = AlarmHelpers.firstStationUriFromCatalog(catalog) || '';
+  return {
+    alarm_enabled: false,
+    alarm_hour: 7,
+    alarm_minute: 0,
+    alarm_station_uri: defaultStation,
+    alarm_volume: 45,
+    monday: true,
+    tuesday: true,
+    wednesday: true,
+    thursday: true,
+    friday: true,
+    saturday: false,
+    sunday: false
+  };
+}
+
 function readJsonOrDefault(filePath, fallback) {
   try {
     if (fs.existsSync(filePath)) {
@@ -284,143 +321,221 @@ KoreanRadioAlarm.prototype.getUIConfig = function () {
     var fallback = path.join(__dirname, 'i18n', 'strings_en.json');
     return self.commandRouter.i18nJson(requested, fallback, path.join(__dirname, 'UIConfig.json'));
   }).then(function (uiConfig) {
-    if (!uiConfig || !uiConfig.sections || !Array.isArray(uiConfig.sections) || !uiConfig.sections[0]) {
+    if (!uiConfig || !uiConfig.sections || !Array.isArray(uiConfig.sections)) {
       return uiConfig;
     }
 
     var stationOptions = AlarmHelpers.stationOptionsFromCatalog(self.catalog);
-    var alarmConfig = self._getStoredAlarmConfig();
-
-    var section = uiConfig.sections[0];
-    if (!Array.isArray(section.content)) {
-      section.content = [];
+    var hourOptions = [];
+    for (var h = 0; h <= 23; h++) {
+      hourOptions.push({ value: h, label: toLabel(h, 2) });
     }
 
-    var contentById = {};
-    section.content.forEach(function (item) {
-      if (item && item.id) {
-        contentById[item.id] = item;
+    var minuteOptions = [];
+    for (var m = 0; m <= 59; m++) {
+      minuteOptions.push({ value: m, label: toLabel(m, 2) });
+    }
+
+    var volumeOptions = [];
+    for (var v = 0; v <= 100; v += 5) {
+      volumeOptions.push({ value: v, label: String(v) });
+    }
+
+    uiConfig.sections.forEach(function (section) {
+      if (!section || !Array.isArray(section.content)) {
+        return;
+      }
+
+      var match = /_([1-3])$/.exec(section.id || '');
+      var slotId = match ? 'alarm_' + match[1] : null;
+      if (!slotId) {
+        return;
+      }
+
+      var alarmConfig = self._getStoredAlarmConfig(slotId);
+      var contentById = {};
+      section.content.forEach(function (item) {
+        if (item && item.id) {
+          contentById[item.id] = item;
+        }
+      });
+
+      var minute = alarmConfig.alarm_minute;
+      var hour = alarmConfig.alarm_hour;
+      var volume = alarmConfig.alarm_volume;
+      var stationUri = alarmConfig.alarm_station_uri;
+
+      if (!stationUri && stationOptions.length > 0) {
+        stationUri = stationOptions[0].value;
+      }
+
+      var enabledId = slotId + '_enabled';
+      var hourId = slotId + '_hour';
+      var minuteId = slotId + '_minute';
+      var stationId = slotId + '_station_uri';
+      var volumeId = slotId + '_volume';
+      var fieldIds = {
+        monday: slotId + '_monday',
+        tuesday: slotId + '_tuesday',
+        wednesday: slotId + '_wednesday',
+        thursday: slotId + '_thursday',
+        friday: slotId + '_friday',
+        saturday: slotId + '_saturday',
+        sunday: slotId + '_sunday'
+      };
+
+      if (contentById[enabledId]) {
+        contentById[enabledId].value = !!alarmConfig.alarm_enabled;
+      }
+
+      if (contentById[hourId]) {
+        contentById[hourId].value = hour;
+        contentById[hourId].options = hourOptions;
+      }
+
+      if (contentById[minuteId]) {
+        contentById[minuteId].value = minute;
+        contentById[minuteId].options = minuteOptions;
+      }
+
+      if (contentById[volumeId]) {
+        contentById[volumeId].value = volume;
+        contentById[volumeId].options = volumeOptions;
+      }
+
+      if (contentById[stationId]) {
+        contentById[stationId].value = stationUri;
+        contentById[stationId].options = stationOptions;
+      }
+
+      if (contentById[fieldIds.monday]) {
+        contentById[fieldIds.monday].value = !!alarmConfig.monday;
+      }
+      if (contentById[fieldIds.tuesday]) {
+        contentById[fieldIds.tuesday].value = !!alarmConfig.tuesday;
+      }
+      if (contentById[fieldIds.wednesday]) {
+        contentById[fieldIds.wednesday].value = !!alarmConfig.wednesday;
+      }
+      if (contentById[fieldIds.thursday]) {
+        contentById[fieldIds.thursday].value = !!alarmConfig.thursday;
+      }
+      if (contentById[fieldIds.friday]) {
+        contentById[fieldIds.friday].value = !!alarmConfig.friday;
+      }
+      if (contentById[fieldIds.saturday]) {
+        contentById[fieldIds.saturday].value = !!alarmConfig.saturday;
+      }
+      if (contentById[fieldIds.sunday]) {
+        contentById[fieldIds.sunday].value = !!alarmConfig.sunday;
       }
     });
-
-    var minute = alarmConfig.alarm_minute;
-    var hour = alarmConfig.alarm_hour;
-    var volume = alarmConfig.alarm_volume;
-    var stationUri = alarmConfig.alarm_station_uri;
-
-    if (!stationUri && stationOptions.length > 0) {
-      stationUri = stationOptions[0].value;
-    }
-
-    if (contentById.alarm_enabled) {
-      contentById.alarm_enabled.value = !!alarmConfig.alarm_enabled;
-    }
-
-    if (contentById.alarm_hour) {
-      contentById.alarm_hour.value = hour;
-      contentById.alarm_hour.options = [];
-      for (var h = 0; h <= 23; h++) {
-        contentById.alarm_hour.options.push({ value: h, label: toLabel(h, 2) });
-      }
-    }
-
-    if (contentById.alarm_minute) {
-      contentById.alarm_minute.value = minute;
-      contentById.alarm_minute.options = [];
-      for (var m = 0; m <= 55; m += 5) {
-        contentById.alarm_minute.options.push({ value: m, label: toLabel(m, 2) });
-      }
-    }
-
-    if (contentById.alarm_volume) {
-      contentById.alarm_volume.value = volume;
-      contentById.alarm_volume.options = [];
-      for (var v = 0; v <= 100; v += 5) {
-        contentById.alarm_volume.options.push({ value: v, label: String(v) });
-      }
-    }
-
-    if (contentById.alarm_station_uri) {
-      contentById.alarm_station_uri.value = stationUri;
-      contentById.alarm_station_uri.options = stationOptions;
-    }
-
-    if (contentById.monday) {
-      contentById.monday.value = !!alarmConfig.monday;
-    }
-
-    if (contentById.tuesday) {
-      contentById.tuesday.value = !!alarmConfig.tuesday;
-    }
-
-    if (contentById.wednesday) {
-      contentById.wednesday.value = !!alarmConfig.wednesday;
-    }
-
-    if (contentById.thursday) {
-      contentById.thursday.value = !!alarmConfig.thursday;
-    }
-
-    if (contentById.friday) {
-      contentById.friday.value = !!alarmConfig.friday;
-    }
-
-    if (contentById.saturday) {
-      contentById.saturday.value = !!alarmConfig.saturday;
-    }
-
-    if (contentById.sunday) {
-      contentById.sunday.value = !!alarmConfig.sunday;
-    }
 
     return uiConfig;
   });
 };
 
 KoreanRadioAlarm.prototype.saveAlarm = function (data) {
+  var self = this;
   data = data || {};
   if (data.value && typeof data.value === 'object') {
     data = data.value;
   }
 
-  var enabled = this._normalizeBooleanValue(data.alarm_enabled);
-  var hour = AlarmHelpers.normalizeSelectValue(data.alarm_hour, 0, 23, 1, null);
-  var minute = AlarmHelpers.normalizeSelectValue(data.alarm_minute, 0, 59, 5, null);
-  var volume = AlarmHelpers.normalizeSelectValue(data.alarm_volume, 0, 100, 5, null);
-  var stationUri = this._normalizeStationValue(data.alarm_station_uri);
+  var slotId = this._extractSlotIdFromPayload(data);
+  if (!slotId) {
+    slotId = 'alarm_1';
+  }
 
-  if (!AlarmHelpers.isValidTime(hour, minute) || volume === null) {
+  var prefix = slotId + '_';
+  var existing = this._getStoredAlarmConfig(slotId);
+  var useLegacyPayload = slotId === 'alarm_1' &&
+    (Object.prototype.hasOwnProperty.call(data, 'alarm_enabled') ||
+      Object.prototype.hasOwnProperty.call(data, 'alarm_hour') ||
+      Object.prototype.hasOwnProperty.call(data, 'alarm_minute') ||
+      Object.prototype.hasOwnProperty.call(data, 'alarm_station_uri') ||
+      Object.prototype.hasOwnProperty.call(data, 'alarm_volume') ||
+      Object.prototype.hasOwnProperty.call(data, 'monday') ||
+      Object.prototype.hasOwnProperty.call(data, 'tuesday') ||
+      Object.prototype.hasOwnProperty.call(data, 'wednesday') ||
+      Object.prototype.hasOwnProperty.call(data, 'thursday') ||
+      Object.prototype.hasOwnProperty.call(data, 'friday') ||
+      Object.prototype.hasOwnProperty.call(data, 'saturday') ||
+      Object.prototype.hasOwnProperty.call(data, 'sunday'));
+
+  var stationUri = this._normalizeStationValue(useLegacyPayload ? data.alarm_station_uri : data[prefix + 'station_uri']);
+  var station = stationUri ? AlarmHelpers.findStationByUri(this.catalog, stationUri) : null;
+
+  var setEnabled = Object.prototype.hasOwnProperty.call(data, prefix + 'enabled') ||
+    (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_enabled'));
+  var setHour = Object.prototype.hasOwnProperty.call(data, prefix + 'hour') ||
+    (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_hour'));
+  var setMinute = Object.prototype.hasOwnProperty.call(data, prefix + 'minute') ||
+    (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_minute'));
+  var setVolume = Object.prototype.hasOwnProperty.call(data, prefix + 'volume') ||
+    (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_volume'));
+  var setStation = Object.prototype.hasOwnProperty.call(data, prefix + 'station_uri') ||
+    (useLegacyPayload && Object.prototype.hasOwnProperty.call(data, 'alarm_station_uri'));
+
+  var enabled = this._normalizeBooleanValue(setEnabled ? (useLegacyPayload ? data.alarm_enabled : data[prefix + 'enabled']) : existing.alarm_enabled);
+  var hour = AlarmHelpers.normalizeSelectValue(setHour ? (useLegacyPayload ? data.alarm_hour : data[prefix + 'hour']) : existing.alarm_hour, 0, 23, 1, existing.alarm_hour);
+  var minute = AlarmHelpers.normalizeSelectValue(setMinute ? (useLegacyPayload ? data.alarm_minute : data[prefix + 'minute']) : existing.alarm_minute, 0, 59, 1, existing.alarm_minute);
+  var volume = AlarmHelpers.normalizeSelectValue(setVolume ? (useLegacyPayload ? data.alarm_volume : data[prefix + 'volume']) : existing.alarm_volume, 0, 100, 5, existing.alarm_volume);
+  var weekdays = this._getWeekdayValuesFromPayload(slotId, data, existing);
+
+  if (!station) {
+    station = { uri: existing.alarm_station_uri };
+    if (setStation) {
+      var noStation = this._t('ALARM.NO_STATION', 'No valid station');
+      this._pushToast('error', this._t('ALARM.TITLE', 'Korean Radio Alarm'), noStation);
+      return libQ.reject(new Error(noStation));
+    }
+  }
+
+  if ((setHour || setMinute || setEnabled || setVolume || setStation) && (!AlarmHelpers.isValidTime(hour, minute) || volume === null)) {
     var msg = this._t('ALARM.SAVE_ERROR', this._t('ALARM.SAVE_ERROR', 'Failed to save alarm settings'));
     this._pushToast('error', this._t('ALARM.TITLE', 'Korean Radio Alarm'), msg);
     return libQ.reject(new Error(msg));
   }
 
-  var station = AlarmHelpers.findStationByUri(this.catalog, stationUri);
-  if (!station) {
-    var noStation = this._t('ALARM.NO_STATION', 'No valid station');
-    this._pushToast('error', this._t('ALARM.TITLE', 'Korean Radio Alarm'), noStation);
-    return libQ.reject(new Error(noStation));
+  if (setEnabled) {
+    this.configManager.set(prefix + 'enabled', !!enabled);
+  }
+  if (setHour) {
+    this.configManager.set(prefix + 'hour', hour);
+  }
+  if (setMinute) {
+    this.configManager.set(prefix + 'minute', minute);
+  }
+  if (setVolume) {
+    this.configManager.set(prefix + 'volume', volume);
+  }
+  if (setStation) {
+    this.configManager.set(prefix + 'station_uri', station.uri || stationUri);
   }
 
-  this.configManager.set('alarm_enabled', !!enabled);
-  this.configManager.set('alarm_hour', hour);
-  this.configManager.set('alarm_minute', minute);
-  this.configManager.set('alarm_station_uri', station.uri || stationUri);
-  this.configManager.set('alarm_volume', volume);
-  this.configManager.set('monday', !!data.monday);
-  this.configManager.set('tuesday', !!data.tuesday);
-  this.configManager.set('wednesday', !!data.wednesday);
-  this.configManager.set('thursday', !!data.thursday);
-  this.configManager.set('friday', !!data.friday);
-  this.configManager.set('saturday', !!data.saturday);
-  this.configManager.set('sunday', !!data.sunday);
+  WEEKDAY_KEYS.forEach(function (weekday) {
+    var field = prefix + weekday;
+    var legacyField = weekday;
 
-  this.alarmConfig = this._getStoredAlarmConfig();
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
+      self.configManager.set(field, self._normalizeBooleanValue(data[field]));
+      return;
+    }
+
+    if (slotId === 'alarm_1' && Object.prototype.hasOwnProperty.call(data, legacyField)) {
+      self.configManager.set(field, self._normalizeBooleanValue(data[legacyField]));
+    }
+  });
+
+  this._persistConfig();
+  this.alarmConfig = this._getStoredAlarmConfig(slotId);
   this._rescheduleAlarm();
-  this._pushToast('success', this._t('ALARM.TITLE', 'Korean Radio Alarm'), this._t('ALARM.SAVE_SUCCESS', 'Alarm saved'));
+  this._pushToast('success', this._t('ALARM.TITLE', 'Korean Radio Alarm'), this._t('ALARM.SAVE_SUCCESS', 'Alarm settings saved and rescheduled'));
 
   return libQ.resolve({
     success: true,
+    slot: slotId,
     alarm: this.alarmConfig
   });
 };
@@ -594,19 +709,20 @@ KoreanRadioAlarm.prototype._preparePlayTrackForPlayback = function (track) {
   });
 };
 
-KoreanRadioAlarm.prototype._onAlarmFire = function () {
+KoreanRadioAlarm.prototype._onAlarmFire = function (slotId) {
   var self = this;
-  if (!this.alarmConfig) {
-    this.alarmConfig = this._getStoredAlarmConfig();
+  var alarmConfig = this._getStoredAlarmConfig(slotId || 'alarm_1');
+  if (!alarmConfig || !alarmConfig.alarm_enabled) {
+    return libQ.resolve(false);
   }
 
-  var station = AlarmHelpers.findStationByUri(this.catalog, this.alarmConfig.alarm_station_uri);
+  var station = AlarmHelpers.findStationByUri(this.catalog, alarmConfig.alarm_station_uri);
   if (!station) {
     this._pushToast('error', this._t('ALARM.TITLE', 'Korean Radio Alarm'), this._t('ALARM.NO_STATION', 'No valid station'));
     return libQ.resolve(false);
   }
 
-  return this._setAlarmVolume(this.alarmConfig.alarm_volume)
+  return this._setAlarmVolume(alarmConfig.alarm_volume)
     .then(function () {
       return self.explodeUri(station.uri || (STATION_URI_PREFIX + station.id));
     })
@@ -667,9 +783,82 @@ KoreanRadioAlarm.prototype._pushToast = function (type, title, message) {
   this.commandRouter.pushToastMessage(type, title, message);
 };
 
-KoreanRadioAlarm.prototype._normalizeBooleanValue = function (value) {
+KoreanRadioAlarm.prototype._unwrapConfigValue = function (value) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
   if (typeof value === 'object' && value !== null && value.value !== undefined) {
-    value = value.value;
+    return this._unwrapConfigValue(value.value);
+  }
+
+  return value;
+};
+
+KoreanRadioAlarm.prototype._extractSlotIdFromPayload = function (data) {
+  var slotId = null;
+  var keys = Object.keys(data || {});
+
+  keys.forEach(function (key) {
+    if (isLegacyAlarmKey(key)) {
+      slotId = 'alarm_1';
+      return;
+    }
+
+    var match = /^alarm_([1-3])_/.exec(key);
+    if (match) {
+      slotId = 'alarm_' + match[1];
+    }
+  });
+
+  return slotId;
+};
+
+KoreanRadioAlarm.prototype._getWeekdayValuesFromPayload = function (slotId, data, existing) {
+  var weekdays = {};
+  var prefix = slotId + '_';
+  var self = this;
+
+  WEEKDAY_KEYS.forEach(function (weekday) {
+    var key = prefix + weekday;
+    var legacyKey = weekday;
+
+    if (slotId === 'alarm_1' && data && Object.prototype.hasOwnProperty.call(data, legacyKey)) {
+      weekdays[weekday] = self._normalizeBooleanValue(data[legacyKey]);
+      return;
+    }
+
+    if (data && Object.prototype.hasOwnProperty.call(data, key)) {
+      weekdays[weekday] = self._normalizeBooleanValue(data[key]);
+      return;
+    }
+    weekdays[weekday] = existing[weekday];
+  }, this);
+
+  return weekdays;
+};
+
+KoreanRadioAlarm.prototype._persistConfig = function () {
+  if (!this.configManager || typeof this.configManager.save !== 'function') {
+    return;
+  }
+
+  this.configManager.save();
+};
+
+KoreanRadioAlarm.prototype._normalizeBooleanValue = function (value) {
+  value = this._unwrapConfigValue(value);
+  if (typeof value === 'string') {
+    if (value === 'false') {
+      return false;
+    }
+    if (value === 'true') {
+      return true;
+    }
   }
 
   return !!value;
@@ -681,49 +870,96 @@ KoreanRadioAlarm.prototype._normalizeStationValue = function (value) {
   }
 
   if (typeof value === 'object') {
-    if (value.value) {
-      return String(value.value);
+    value = this._unwrapConfigValue(value);
+    if (value === null || value === undefined) {
+      return '';
     }
-    return '';
   }
 
   return String(value);
 };
 
+KoreanRadioAlarm.prototype._hasSlotConfigValues = function (slotId) {
+  var prefix = slotId + '_';
+  return ALARM_SLOT_IDS.indexOf(slotId) >= 0 && (
+    this.configManager.get(prefix + 'enabled', undefined) !== undefined ||
+    this.configManager.get(prefix + 'hour', undefined) !== undefined ||
+    this.configManager.get(prefix + 'minute', undefined) !== undefined ||
+    this.configManager.get(prefix + 'station_uri', undefined) !== undefined ||
+    this.configManager.get(prefix + 'volume', undefined) !== undefined ||
+    this.configManager.get(prefix + 'monday', undefined) !== undefined ||
+    this.configManager.get(prefix + 'tuesday', undefined) !== undefined ||
+    this.configManager.get(prefix + 'wednesday', undefined) !== undefined ||
+    this.configManager.get(prefix + 'thursday', undefined) !== undefined ||
+    this.configManager.get(prefix + 'friday', undefined) !== undefined ||
+    this.configManager.get(prefix + 'saturday', undefined) !== undefined ||
+    this.configManager.get(prefix + 'sunday', undefined) !== undefined
+  );
+};
+
+KoreanRadioAlarm.prototype._hasLegacyAlarmValues = function () {
+  return this.configManager.get('alarm_enabled', undefined) !== undefined ||
+    this.configManager.get('alarm_hour', undefined) !== undefined ||
+    this.configManager.get('alarm_minute', undefined) !== undefined ||
+    this.configManager.get('alarm_station_uri', undefined) !== undefined ||
+    this.configManager.get('alarm_volume', undefined) !== undefined ||
+    this.configManager.get('monday', undefined) !== undefined ||
+    this.configManager.get('tuesday', undefined) !== undefined ||
+    this.configManager.get('wednesday', undefined) !== undefined ||
+    this.configManager.get('thursday', undefined) !== undefined ||
+    this.configManager.get('friday', undefined) !== undefined ||
+    this.configManager.get('saturday', undefined) !== undefined ||
+    this.configManager.get('sunday', undefined) !== undefined;
+};
+
 KoreanRadioAlarm.prototype._rescheduleAlarm = function () {
   this._clearScheduledJobs();
 
-  this.alarmConfig = this._getStoredAlarmConfig();
-  if (!this.alarmConfig.alarm_enabled) {
-    return;
-  }
-
-  var expressions = AlarmHelpers.buildCronExpressions(
-    this.alarmConfig.alarm_hour,
-    this.alarmConfig.alarm_minute,
-    {
-      monday: this.alarmConfig.monday,
-      tuesday: this.alarmConfig.tuesday,
-      wednesday: this.alarmConfig.wednesday,
-      thursday: this.alarmConfig.thursday,
-      friday: this.alarmConfig.friday,
-      saturday: this.alarmConfig.saturday,
-      sunday: this.alarmConfig.sunday
-    }
-  );
-
   var self = this;
+  var scheduleCount = 0;
+  var nowEnabled = [];
+  this.alarmConfig = {};
 
-  expressions.forEach(function (expr) {
-    var task = cron.schedule(expr, function () {
-      self._onAlarmFire();
-    }, {
-      timezone: self.timezone,
-      scheduled: true
+  ALARM_SLOT_IDS.forEach(function (slotId) {
+    var alarmConfig = self._getStoredAlarmConfig(slotId);
+    self.alarmConfig[slotId] = alarmConfig;
+
+    if (!alarmConfig.alarm_enabled) {
+      return;
+    }
+
+    var expressions = AlarmHelpers.buildCronExpressions(
+      alarmConfig.alarm_hour,
+      alarmConfig.alarm_minute,
+      {
+        monday: alarmConfig.monday,
+        tuesday: alarmConfig.tuesday,
+        wednesday: alarmConfig.wednesday,
+        thursday: alarmConfig.thursday,
+        friday: alarmConfig.friday,
+        saturday: alarmConfig.saturday,
+        sunday: alarmConfig.sunday
+      }
+    );
+
+    expressions.forEach(function (expr) {
+      var task = cron.schedule(expr, function () {
+        self._onAlarmFire(slotId);
+      }, {
+        timezone: self.timezone,
+        scheduled: true
+      });
+
+      self.scheduledJobs.push(task);
+      scheduleCount += 1;
+      nowEnabled.push(slotId);
     });
-
-    self.scheduledJobs.push(task);
   });
+
+  return {
+    scheduled: scheduleCount,
+    enabledSlots: nowEnabled
+  };
 };
 
 KoreanRadioAlarm.prototype._clearScheduledJobs = function () {
@@ -1036,21 +1272,57 @@ KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
   return libQ.reject(new Error('Unsupported stream resolver type ' + station.streamResolver.type + ' for station ' + station.id));
 };
 
-KoreanRadioAlarm.prototype._getStoredAlarmConfig = function () {
+KoreanRadioAlarm.prototype._getStoredAlarmConfig = function (slotId) {
+  slotId = slotId || 'alarm_1';
+  var prefix = slotId + '_';
   var defaultStation = AlarmHelpers.firstStationUriFromCatalog(this.catalog) || '';
+  var defaults = defaultAlarmConfig(slotId, this.catalog);
+
+  if (slotId === 'alarm_1' && !this._hasSlotConfigValues(slotId) && this._hasLegacyAlarmValues()) {
+    defaults = {
+      alarm_enabled: this._unwrapConfigValue(this.configManager.get('alarm_enabled', defaults.alarm_enabled)),
+      alarm_hour: this._unwrapConfigValue(this.configManager.get('alarm_hour', defaults.alarm_hour)),
+      alarm_minute: this._unwrapConfigValue(this.configManager.get('alarm_minute', defaults.alarm_minute)),
+      alarm_station_uri: this._unwrapConfigValue(this.configManager.get('alarm_station_uri', defaults.alarm_station_uri)),
+      alarm_volume: this._unwrapConfigValue(this.configManager.get('alarm_volume', defaults.alarm_volume)),
+      monday: this._unwrapConfigValue(this.configManager.get('monday', defaults.monday)),
+      tuesday: this._unwrapConfigValue(this.configManager.get('tuesday', defaults.tuesday)),
+      wednesday: this._unwrapConfigValue(this.configManager.get('wednesday', defaults.wednesday)),
+      thursday: this._unwrapConfigValue(this.configManager.get('thursday', defaults.thursday)),
+      friday: this._unwrapConfigValue(this.configManager.get('friday', defaults.friday)),
+      saturday: this._unwrapConfigValue(this.configManager.get('saturday', defaults.saturday)),
+      sunday: this._unwrapConfigValue(this.configManager.get('sunday', defaults.sunday))
+    };
+  } else {
+    defaults = {
+      alarm_enabled: this._unwrapConfigValue(this.configManager.get(prefix + 'enabled', defaults.alarm_enabled)),
+      alarm_hour: this._unwrapConfigValue(this.configManager.get(prefix + 'hour', defaults.alarm_hour)),
+      alarm_minute: this._unwrapConfigValue(this.configManager.get(prefix + 'minute', defaults.alarm_minute)),
+      alarm_station_uri: this._unwrapConfigValue(this.configManager.get(prefix + 'station_uri', defaults.alarm_station_uri)),
+      alarm_volume: this._unwrapConfigValue(this.configManager.get(prefix + 'volume', defaults.alarm_volume)),
+      monday: this._unwrapConfigValue(this.configManager.get(prefix + 'monday', defaults.monday)),
+      tuesday: this._unwrapConfigValue(this.configManager.get(prefix + 'tuesday', defaults.tuesday)),
+      wednesday: this._unwrapConfigValue(this.configManager.get(prefix + 'wednesday', defaults.wednesday)),
+      thursday: this._unwrapConfigValue(this.configManager.get(prefix + 'thursday', defaults.thursday)),
+      friday: this._unwrapConfigValue(this.configManager.get(prefix + 'friday', defaults.friday)),
+      saturday: this._unwrapConfigValue(this.configManager.get(prefix + 'saturday', defaults.saturday)),
+      sunday: this._unwrapConfigValue(this.configManager.get(prefix + 'sunday', defaults.sunday))
+    };
+  }
+
   var stored = {
-    alarm_enabled: this.configManager.get('alarm_enabled', false),
-    alarm_hour: this.configManager.get('alarm_hour', 7),
-    alarm_minute: this.configManager.get('alarm_minute', 0),
-    alarm_station_uri: this.configManager.get('alarm_station_uri', defaultStation),
-    alarm_volume: this.configManager.get('alarm_volume', 45),
-    monday: this.configManager.get('monday', true),
-    tuesday: this.configManager.get('tuesday', true),
-    wednesday: this.configManager.get('wednesday', true),
-    thursday: this.configManager.get('thursday', true),
-    friday: this.configManager.get('friday', true),
-    saturday: this.configManager.get('saturday', false),
-    sunday: this.configManager.get('sunday', false)
+    alarm_enabled: this._normalizeBooleanValue(defaults.alarm_enabled),
+    alarm_hour: AlarmHelpers.normalizeSelectValue(defaults.alarm_hour, 0, 23, 1, defaults.alarm_hour),
+    alarm_minute: AlarmHelpers.normalizeSelectValue(defaults.alarm_minute, 0, 59, 1, defaults.alarm_minute),
+    alarm_volume: AlarmHelpers.normalizeSelectValue(defaults.alarm_volume, 0, 100, 5, defaults.alarm_volume),
+    alarm_station_uri: this._normalizeStationValue(defaults.alarm_station_uri),
+    monday: this._normalizeBooleanValue(defaults.monday),
+    tuesday: this._normalizeBooleanValue(defaults.tuesday),
+    wednesday: this._normalizeBooleanValue(defaults.wednesday),
+    thursday: this._normalizeBooleanValue(defaults.thursday),
+    friday: this._normalizeBooleanValue(defaults.friday),
+    saturday: this._normalizeBooleanValue(defaults.saturday),
+    sunday: this._normalizeBooleanValue(defaults.sunday)
   };
 
   if (!AlarmHelpers.findStationByUri(this.catalog, stored.alarm_station_uri)) {

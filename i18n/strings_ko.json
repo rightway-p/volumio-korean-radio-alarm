@@ -3,7 +3,10 @@
     "LABEL": "Korean Radio Alarm"
   },
   "SECTION": {
-    "ALARM": "알림 시계"
+    "ALARM": "알림 시계",
+    "ALARM_SLOT_1": "알림 1",
+    "ALARM_SLOT_2": "알림 2",
+    "ALARM_SLOT_3": "알림 3"
   },
   "BUTTON": {
     "SAVE": "저장"
