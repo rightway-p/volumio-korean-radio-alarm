@@ -13,38 +13,19 @@
           "id": "kbs-cool-fm",
           "name": "KBS Cool FM",
           "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=2fm"
-        }
-      ]
-    },
-    {
-      "id": "mbc",
-      "name": "MBC",
-      "stations": [
-        {
-          "id": "mbc-standard-fm",
-          "name": "MBC Standard FM",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=mbc&ch=sfm"
         },
         {
-          "id": "mbc-fm4u",
-          "name": "MBC FM4U",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=mbc&ch=mfm"
-        }
-      ]
-    },
-    {
-      "id": "sbs",
-      "name": "SBS",
-      "stations": [
-        {
-          "id": "sbs-love-fm",
-          "name": "SBS Love FM",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=sbs&ch=lovefm"
+          "id": "kbs-hanminjok",
+          "name": "KBS Hanminjok",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=hanminjok"
         },
         {
-          "id": "sbs-power-fm",
-          "name": "SBS Power FM",
-          "streamUrl": "https://radio.bsod.kr/stream/?stn=sbs&ch=powerfm"
+          "id": "kbs-world-radio",
+          "name": "KBS World Radio",
+          "streamResolver": {
+            "type": "kbs-play-api",
+            "channelId": "worldradio"
+          }
         }
       ]
     },

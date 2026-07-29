@@ -6,6 +6,7 @@ var libQ = require('kew');
 var cron = require('node-cron');
 var childProcess = require('child_process');
 var VConf = require('v-conf');
+var https = require('https');
 
 var AlarmHelpers = require('./lib/alarm');
 
@@ -14,6 +15,8 @@ var SOURCE_ID = 'korean_radio_alarm';
 var SOURCE_URI = AlarmHelpers.SOURCE_URI || 'korean_radio_alarm://';
 var STATION_URI_PREFIX = AlarmHelpers.STATION_URI_PREFIX || (SOURCE_URI + 'station/');
 var BROWSE_SOURCE_NAME = 'Korean Radio Alarm';
+var KBS_PLAY_API_URL_BASE = 'https://static.api.kbs.co.kr/play/1.2/live/channel/';
+var KBS_PLAY_API_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwbGF0Zm9ybUlkIjoia2JzLWhvbWUiLCJ1c2VySWQiOiIiLCJkYXRhIjoiIiwic2NvcGUiOlsiZGVmYXVsdCIsImFkbWluIl0sInRva2VuRXhwaXJlVGltZSI6MjIyNDkxMTMwODIwM30.hb4K_Wn2ekzNO84xfAOrPnj2OyAeRt7HgSr2TzgQvJQ';
 
 function KoreanRadioAlarm(context) {
   this.context = context;
@@ -427,17 +430,19 @@ KoreanRadioAlarm.prototype.explodeUri = function (uri) {
     return libQ.reject(new Error('Invalid uri'));
   }
 
-  var track = {
-    service: PLUGIN_NAME,
-    type: 'track',
-    uri: station.uri || (STATION_URI_PREFIX + station.id),
-    realUri: station.streamUrl,
-    path: station.streamUrl,
-    name: station.name,
-    title: station.name
-  };
+  return this._resolveStationStreamUrl(station).then(function (resolvedStreamUrl) {
+    var track = {
+      service: PLUGIN_NAME,
+      type: 'track',
+      uri: station.uri || (STATION_URI_PREFIX + station.id),
+      realUri: resolvedStreamUrl,
+      path: resolvedStreamUrl,
+      name: station.name,
+      title: station.name
+    };
 
-  return libQ.resolve([track]);
+    return [track];
+  });
 };
 
 KoreanRadioAlarm.prototype.handleBrowseUri = function (uri) {
@@ -467,18 +472,26 @@ KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
     return libQ.reject(new Error(this._t('ALARM.NO_URI', 'No track URI')));
   }
 
-  if (!playTrack.realUri) {
-    if (typeof playTrack.uri === 'string') {
-      playTrack.realUri = playTrack.uri;
-    } else {
-      return libQ.reject(new Error(this._t('ALARM.NO_URI', 'No track URI')));
-    }
+  var hasUri = typeof playTrack.uri === 'string' && playTrack.uri.length > 0;
+  var hasRealUri = typeof playTrack.realUri === 'string' && playTrack.realUri.length > 0;
+
+  if (!hasUri && !hasRealUri) {
+    return libQ.reject(new Error(this._t('ALARM.NO_URI', 'No track URI')));
   }
 
   var self = this;
   var serviceName = PLUGIN_NAME;
 
-  return callPluginMethod(this.mpdPlugin, 'sendMpdCommand', ['stop', []])
+  return self._preparePlayTrackForPlayback(playTrack)
+    .then(function (preparedTrack) {
+      playTrack = preparedTrack;
+
+      if (!playTrack.realUri) {
+        playTrack.realUri = playTrack.uri;
+      }
+
+      return callPluginMethod(self.mpdPlugin, 'sendMpdCommand', ['stop', []]);
+    })
     .then(function () {
       return callPluginMethod(self.mpdPlugin, 'sendMpdCommand', ['clear', []]);
     })
@@ -510,6 +523,40 @@ KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
         return callPluginMethod(self.commandRouter.stateMachine, 'syncState', [state, serviceName]);
       });
     });
+};
+
+KoreanRadioAlarm.prototype._preparePlayTrackForPlayback = function (track) {
+  var self = this;
+
+  if (!track) {
+    return libQ.reject(new Error(this._t('ALARM.NO_URI', 'No track URI')));
+  }
+
+  var hasUri = typeof track.uri === 'string' && track.uri.length > 0;
+  var hasRealUri = typeof track.realUri === 'string' && track.realUri.length > 0;
+
+  if (!hasUri && !hasRealUri) {
+    return libQ.reject(new Error(this._t('ALARM.NO_URI', 'No track URI')));
+  }
+
+  var shouldResolve = typeof track.uri === 'string' &&
+    track.uri.indexOf(STATION_URI_PREFIX) === 0 &&
+    (!hasRealUri || track.realUri === track.uri);
+
+  if (!shouldResolve) {
+    return libQ.resolve(track);
+  }
+
+  var station = AlarmHelpers.findStationByUri(this.catalog, track.uri);
+  if (!station) {
+    return libQ.resolve(track);
+  }
+
+  return this._resolveStationStreamUrl(station).then(function (resolvedStreamUrl) {
+    track.realUri = resolvedStreamUrl;
+    track.path = resolvedStreamUrl;
+    return track;
+  });
 };
 
 KoreanRadioAlarm.prototype._onAlarmFire = function () {
@@ -779,7 +826,8 @@ KoreanRadioAlarm.prototype._buildGroupNavigation = function (groupId) {
 
   var stations = Array.isArray(target.stations) ? target.stations : [];
   var items = stations.map(function (station) {
-    return {
+    var streamPath = station.streamUrl || '';
+    var item = {
       service: PLUGIN_NAME,
       type: 'song',
       title: station.name,
@@ -787,9 +835,15 @@ KoreanRadioAlarm.prototype._buildGroupNavigation = function (groupId) {
       artist: target.name || target.id,
       icon: 'fa-broadcast-tower',
       uri: station.uri || (STATION_URI_PREFIX + station.id),
-      path: station.streamUrl,
-      realUri: station.streamUrl
+      name: station.name
     };
+
+    if (streamPath && streamPath.length > 0) {
+      item.path = streamPath;
+      item.realUri = streamPath;
+    }
+
+    return item;
   });
 
   return libQ.resolve({
@@ -831,6 +885,116 @@ KoreanRadioAlarm.prototype._ensureStationUris = function () {
 KoreanRadioAlarm.prototype._loadCatalog = function () {
   this.catalog = readJsonOrDefault(this.catalogFile, { groups: [] });
   this._ensureStationUris();
+};
+
+KoreanRadioAlarm.prototype._requestJson = function (url, options) {
+  var headers = options && options.headers ? options.headers : {};
+  var defer = libQ.defer();
+  var consumed = false;
+
+  var done = function (err, result) {
+    if (consumed) {
+      return;
+    }
+    consumed = true;
+    if (err) {
+      defer.reject(err);
+      return;
+    }
+    defer.resolve(result);
+  };
+
+  if (typeof url !== 'string' || !url) {
+    return libQ.reject(new Error('Missing request url'));
+  }
+
+  var req;
+  try {
+    req = https.get(url, { headers: headers }, function (res) {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        done(new Error('KBS play api request failed with status ' + res.statusCode));
+        res.resume();
+        return;
+      }
+
+      var body = '';
+      res.setEncoding('utf8');
+      res.on('data', function (chunk) {
+        body += chunk;
+      });
+      res.on('end', function () {
+        try {
+          done(null, JSON.parse(body));
+        } catch (e) {
+          done(e);
+        }
+      });
+      res.on('error', function (err) {
+        done(err);
+      });
+    });
+  } catch (e) {
+    return done(e), defer.promise;
+  }
+
+  req.on('error', function (err) {
+    done(err);
+  });
+  req.setTimeout(10000, function () {
+    done(new Error('KBS play api request timeout'));
+    req.destroy();
+  });
+  return defer.promise;
+};
+
+KoreanRadioAlarm.prototype._resolveStationStreamUrl = function (station) {
+  var self = this;
+
+  if (!station) {
+    return libQ.reject(new Error('Invalid station'));
+  }
+
+  if (!station.streamResolver || !station.streamResolver.type) {
+    if (typeof station.streamUrl === 'string' && station.streamUrl.length > 0) {
+      return libQ.resolve(station.streamUrl);
+    }
+    return libQ.reject(new Error('No static stream URL for station ' + station.id));
+  }
+
+  if (station.streamResolver.type === 'kbs-play-api') {
+    var channelId = station.streamResolver.channelId;
+
+    if (typeof channelId !== 'string' || !channelId) {
+      return libQ.reject(new Error('Missing channelId for KBS play resolver on station ' + station.id));
+    }
+
+    var endpoint = KBS_PLAY_API_URL_BASE + encodeURIComponent(channelId);
+    var headers = {
+      Authorization: KBS_PLAY_API_AUTHORIZATION
+    };
+
+    return safePromise(function () {
+      return self._requestJson(endpoint, { headers: headers });
+    }).then(function (payload) {
+      if (!payload || typeof payload.streamUrl !== 'string' || !payload.streamUrl) {
+        var invalid = new Error('Invalid KBS play api response for station ' + station.id);
+        if (self.logger && typeof self.logger.error === 'function') {
+          self.logger.error(invalid.message);
+        }
+        throw invalid;
+      }
+
+      return payload.streamUrl;
+    }).fail(function (err) {
+      if (self.logger && typeof self.logger.error === 'function') {
+        var message = err && err.message ? err.message : 'Unknown error';
+        self.logger.error('Failed to resolve stream URL for station ' + station.id + ': ' + message);
+      }
+      throw err;
+    });
+  }
+
+  return libQ.reject(new Error('Unsupported stream resolver type ' + station.streamResolver.type + ' for station ' + station.id));
 };
 
 KoreanRadioAlarm.prototype._getStoredAlarmConfig = function () {

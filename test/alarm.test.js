@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 
 const {
   normalizeSelectValue,
@@ -71,6 +73,32 @@ test('stationOptionsFromCatalog flattens catalog preserving group labels', () =>
     { value: STATION_URI_PREFIX + 'two', label: 'KBS - KBS Two' },
     { value: STATION_URI_PREFIX + 'three', label: 'MBC - MBC FM' }
   ]);
+});
+
+test('radio station catalog removes unstable groups and adds KBS production-safe stations', () => {
+  var catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'radio_stations.json'), 'utf8'));
+  var groupIds = catalog.groups.map(function (group) {
+    return group.id;
+  });
+
+  assert.strictEqual(groupIds.includes('mbc'), false);
+  assert.strictEqual(groupIds.includes('sbs'), false);
+
+  var kbs = catalog.groups.find(function (group) {
+    return group.id === 'kbs';
+  });
+  assert.strictEqual(Array.isArray(kbs.stations), true);
+
+  var hanminjok = kbs.stations.find(function (station) {
+    return station.id === 'kbs-hanminjok';
+  });
+  var world = kbs.stations.find(function (station) {
+    return station.id === 'kbs-world-radio';
+  });
+
+  assert.strictEqual(hanminjok.name, 'KBS Hanminjok');
+  assert.strictEqual(world.streamResolver.type, 'kbs-play-api');
+  assert.strictEqual(world.streamResolver.channelId, 'worldradio');
 });
 
 function createPlugin(coreCommand) {
@@ -178,6 +206,85 @@ test('handleBrowseUri and explodeUri stay consistent with station option URIs', 
   assert.strictEqual(option.value, STATION_URI_PREFIX + 'classic');
 });
 
+test('explodeUri resolves dynamic streamResolver urls before playback', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          {
+            id: 'world-radio',
+            name: 'KBS World Radio',
+            streamResolver: {
+              type: 'kbs-play-api',
+              channelId: 'worldradio'
+            }
+          }
+        ]
+      }
+    ]
+  };
+  plugin._ensureStationUris && plugin._ensureStationUris();
+  plugin._requestJson = function (url, options) {
+    assert.strictEqual(url, 'https://static.api.kbs.co.kr/play/1.2/live/channel/worldradio');
+    assert.strictEqual(options.headers.Authorization.length > 0, true);
+    return Promise.resolve({
+      streamUrl: 'https://kbs-world.live/playlist.m3u8'
+    });
+  };
+
+  var tracks = await plugin.explodeUri(STATION_URI_PREFIX + 'world-radio');
+  assert.strictEqual(tracks[0].realUri, 'https://kbs-world.live/playlist.m3u8');
+  assert.strictEqual(tracks[0].path, 'https://kbs-world.live/playlist.m3u8');
+});
+
+test('explodeUri rejects dynamic resolver payload without streamUrl', async () => {
+  var plugin = createPlugin({
+    getLanguage: function () {
+      return 'en';
+    }
+  });
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          {
+            id: 'world-radio',
+            name: 'KBS World Radio',
+            streamResolver: {
+              type: 'kbs-play-api',
+              channelId: 'worldradio'
+            }
+          }
+        ]
+      }
+    ]
+  };
+  plugin._ensureStationUris && plugin._ensureStationUris();
+  plugin._requestJson = function () {
+    return Promise.resolve({});
+  };
+
+  var captured;
+  try {
+    await plugin.explodeUri(STATION_URI_PREFIX + 'world-radio');
+    assert.fail('expected resolver payload validation to reject');
+  } catch (err) {
+    captured = err;
+  }
+
+  assert.strictEqual(captured instanceof Error, true);
+  assert.match(captured.message, /Invalid KBS play api response for station world-radio/);
+});
+
 test('findStationByUri resolves both direct ids and uri values', () => {
   const catalog = {
     groups: [
@@ -263,4 +370,146 @@ test('clearAddPlayTrack passes plugin service and metadata to stateMachine.syncS
   assert.strictEqual(syncStateCalls[0][0].title, 'KBS Classic FM');
   assert.strictEqual(syncStateCalls[0][0].path, 'https://radio.example.com/stream');
   assert.strictEqual(syncStateCalls[0][0].status, 'playing');
+});
+
+test('clearAddPlayTrack resolves dynamic station uri before MPD add', async () => {
+  var plugin = createPlugin({
+    addToBrowseSources: function () {},
+    volumioSetVolume: function () {}
+  });
+
+  var mpdCalls = [];
+  var syncStateCalls = [];
+  plugin.catalog = {
+    groups: [
+      {
+        id: 'kbs',
+        name: 'KBS',
+        stations: [
+          {
+            id: 'world-radio',
+            name: 'KBS World Radio',
+            streamResolver: {
+              type: 'kbs-play-api',
+              channelId: 'worldradio'
+            }
+          }
+        ]
+      }
+    ]
+  };
+  plugin._ensureStationUris && plugin._ensureStationUris();
+  plugin._requestJson = function (url) {
+    assert.strictEqual(url, 'https://static.api.kbs.co.kr/play/1.2/live/channel/worldradio');
+    return Promise.resolve({
+      streamUrl: 'https://kbs-world.live/playlist.m3u8'
+    });
+  };
+
+  plugin.mpdPlugin = {
+    sendMpdCommand: function (command, args, cb) {
+      mpdCalls.push([command, args]);
+      if (typeof cb === 'function') {
+        cb(null, true);
+        return;
+      }
+      return Promise.resolve(true);
+    },
+    getState: function (cb) {
+      var state = {
+        status: 'playing',
+        service: 'mpd',
+        uri: 'https://old.example.com/stream',
+        title: ''
+      };
+      if (typeof cb === 'function') {
+        cb(null, state);
+        return;
+      }
+      return Promise.resolve(state);
+    }
+  };
+
+  plugin.commandRouter = {
+    stateMachine: {
+      syncState: function (state, service, cb) {
+        syncStateCalls.push([state, service]);
+        if (typeof cb === 'function') {
+          cb(null, true);
+          return;
+        }
+        return Promise.resolve(true);
+      }
+    }
+  };
+
+  await plugin.clearAddPlayTrack({
+    service: 'korean_radio_alarm',
+    uri: STATION_URI_PREFIX + 'world-radio',
+    name: 'KBS World Radio'
+  });
+
+  assert.strictEqual(mpdCalls[2][0], 'add "https://kbs-world.live/playlist.m3u8"');
+  assert.strictEqual(syncStateCalls[0][0].uri, 'https://kbs-world.live/playlist.m3u8');
+  assert.strictEqual(syncStateCalls[0][0].path, 'https://kbs-world.live/playlist.m3u8');
+  assert.strictEqual(syncStateCalls[0][0].title, 'KBS World Radio');
+  assert.strictEqual(syncStateCalls[0][0].service, 'korean_radio_alarm');
+});
+
+test('clearAddPlayTrack uses realUri when uri is missing', async () => {
+  var plugin = createPlugin({
+    addToBrowseSources: function () {},
+    volumioSetVolume: function () {}
+  });
+
+  var mpdCalls = [];
+  var syncStateCalls = [];
+
+  plugin.mpdPlugin = {
+    sendMpdCommand: function (command, args, cb) {
+      mpdCalls.push([command, args]);
+      if (typeof cb === 'function') {
+        cb(null, true);
+        return;
+      }
+      return Promise.resolve(true);
+    },
+    getState: function (cb) {
+      var state = {
+        status: 'playing',
+        service: 'mpd',
+        uri: 'https://old.example.com/stream',
+        title: ''
+      };
+      if (typeof cb === 'function') {
+        cb(null, state);
+        return;
+      }
+      return Promise.resolve(state);
+    }
+  };
+
+  plugin.commandRouter = {
+    stateMachine: {
+      syncState: function (state, service, cb) {
+        syncStateCalls.push([state, service]);
+        if (typeof cb === 'function') {
+          cb(null, true);
+          return;
+        }
+        return Promise.resolve(true);
+      }
+    }
+  };
+
+  await plugin.clearAddPlayTrack({
+    service: 'korean_radio_alarm',
+    realUri: 'https://direct.example.com/stream',
+    name: 'Direct'
+  });
+
+  assert.strictEqual(mpdCalls[2][0], 'add "https://direct.example.com/stream"');
+  assert.strictEqual(syncStateCalls[0][0].uri, 'https://direct.example.com/stream');
+  assert.strictEqual(syncStateCalls[0][0].path, 'https://direct.example.com/stream');
+  assert.strictEqual(syncStateCalls[0][0].title, 'Direct');
 });
