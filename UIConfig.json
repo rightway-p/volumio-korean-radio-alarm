@@ -1,0 +1,54 @@
+{
+  "page": {
+    "label": "TRANSLATE.PAGE.LABEL"
+  },
+  "onSave": {
+    "type": "controller",
+    "endpoint": "music_service/korean_radio_alarm",
+    "method": "saveAlarm"
+  },
+  "sections": [
+    {
+      "id": "alarm_settings",
+      "element": "section",
+      "label": "TRANSLATE.SECTION.ALARM",
+      "icon": "fa-clock-o",
+      "onSave": {
+        "type": "controller",
+        "endpoint": "music_service/korean_radio_alarm",
+        "method": "saveAlarm"
+      },
+      "saveButton": {
+        "label": "TRANSLATE.BUTTON.SAVE",
+        "data": [
+          "alarm_enabled",
+          "alarm_hour",
+          "alarm_minute",
+          "alarm_station_uri",
+          "alarm_volume",
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ]
+      },
+      "content": [
+        { "type": "boolean", "element": "switch", "id": "alarm_enabled", "label": "TRANSLATE.ALARM.ENABLED", "value": false },
+        { "element": "select", "id": "alarm_hour", "label": "TRANSLATE.ALARM.HOUR", "value": 7, "options": [] },
+        { "element": "select", "id": "alarm_minute", "label": "TRANSLATE.ALARM.MINUTE", "value": 0, "options": [] },
+        { "element": "select", "id": "alarm_station_uri", "label": "TRANSLATE.ALARM.STATION", "value": "", "options": [] },
+        { "element": "select", "id": "alarm_volume", "label": "TRANSLATE.ALARM.VOLUME", "value": 45, "options": [] },
+        { "type": "boolean", "element": "switch", "id": "monday", "label": "TRANSLATE.WEEKDAY.MONDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "tuesday", "label": "TRANSLATE.WEEKDAY.TUESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "wednesday", "label": "TRANSLATE.WEEKDAY.WEDNESDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "thursday", "label": "TRANSLATE.WEEKDAY.THURSDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "friday", "label": "TRANSLATE.WEEKDAY.FRIDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "saturday", "label": "TRANSLATE.WEEKDAY.SATURDAY", "value": false },
+        { "type": "boolean", "element": "switch", "id": "sunday", "label": "TRANSLATE.WEEKDAY.SUNDAY", "value": false }
+      ]
+    }
+  ]
+}

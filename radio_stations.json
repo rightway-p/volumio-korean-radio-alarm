@@ -1,0 +1,79 @@
+{
+  "groups": [
+    {
+      "id": "kbs",
+      "name": "KBS",
+      "stations": [
+        {
+          "id": "kbs-classic-fm",
+          "name": "KBS Classic FM",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=1fm"
+        },
+        {
+          "id": "kbs-cool-fm",
+          "name": "KBS Cool FM",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=kbs&ch=2fm"
+        }
+      ]
+    },
+    {
+      "id": "mbc",
+      "name": "MBC",
+      "stations": [
+        {
+          "id": "mbc-standard-fm",
+          "name": "MBC Standard FM",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=mbc&ch=sfm"
+        },
+        {
+          "id": "mbc-fm4u",
+          "name": "MBC FM4U",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=mbc&ch=mfm"
+        }
+      ]
+    },
+    {
+      "id": "sbs",
+      "name": "SBS",
+      "stations": [
+        {
+          "id": "sbs-love-fm",
+          "name": "SBS Love FM",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=sbs&ch=lovefm"
+        },
+        {
+          "id": "sbs-power-fm",
+          "name": "SBS Power FM",
+          "streamUrl": "https://radio.bsod.kr/stream/?stn=sbs&ch=powerfm"
+        }
+      ]
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "stations": [
+        {
+          "id": "ytn-radio",
+          "name": "YTN Radio",
+          "streamUrl": "https://radiolive.ytn.co.kr/radio/_definst_/20211118_fmlive/playlist.m3u8"
+        }
+      ]
+    },
+    {
+      "id": "music",
+      "name": "Music",
+      "stations": [
+        {
+          "id": "cbs-music-fm",
+          "name": "CBS Music FM",
+          "streamUrl": "https://m-aac.cbs.co.kr/cbs939/_definst_/cbs939.stream/playlist.m3u8"
+        },
+        {
+          "id": "listen-moe-kpop",
+          "name": "Listen.moe K-pop",
+          "streamUrl": "https://listen.moe/kpop/fallback"
+        }
+      ]
+    }
+  ]
+}

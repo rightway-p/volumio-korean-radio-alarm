@@ -1,0 +1,50 @@
+{
+  "alarm_enabled": {
+    "type": "boolean",
+    "value": false
+  },
+  "alarm_hour": {
+    "type": "number",
+    "value": 7
+  },
+  "alarm_minute": {
+    "type": "number",
+    "value": 0
+  },
+  "alarm_station_uri": {
+    "type": "string",
+    "value": "korean_radio_alarm://station/kbs-classic-fm"
+  },
+  "alarm_volume": {
+    "type": "number",
+    "value": 45
+  },
+  "monday": {
+    "type": "boolean",
+    "value": true
+  },
+  "tuesday": {
+    "type": "boolean",
+    "value": true
+  },
+  "wednesday": {
+    "type": "boolean",
+    "value": true
+  },
+  "thursday": {
+    "type": "boolean",
+    "value": true
+  },
+  "friday": {
+    "type": "boolean",
+    "value": true
+  },
+  "saturday": {
+    "type": "boolean",
+    "value": false
+  },
+  "sunday": {
+    "type": "boolean",
+    "value": false
+  }
+}
