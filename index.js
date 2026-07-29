@@ -15,6 +15,7 @@ var SOURCE_ID = 'korean_radio_alarm';
 var SOURCE_URI = AlarmHelpers.SOURCE_URI || 'korean_radio_alarm://';
 var STATION_URI_PREFIX = AlarmHelpers.STATION_URI_PREFIX || (SOURCE_URI + 'station/');
 var BROWSE_SOURCE_NAME = 'Korean Radio Alarm';
+var WEBRADIO_SERVICE = 'webradio';
 var KBS_PLAY_API_URL_BASE = 'https://static.api.kbs.co.kr/play/1.2/live/channel/';
 var KBS_PLAY_API_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwbGF0Zm9ybUlkIjoia2JzLWhvbWUiLCJ1c2VySWQiOiIiLCJkYXRhIjoiIiwic2NvcGUiOlsiZGVmYXVsdCIsImFkbWluIl0sInRva2VuRXhwaXJlVGltZSI6MjIyNDkxMTMwODIwM30.hb4K_Wn2ekzNO84xfAOrPnj2OyAeRt7HgSr2TzgQvJQ';
 
@@ -431,10 +432,17 @@ KoreanRadioAlarm.prototype.explodeUri = function (uri) {
   }
 
   return this._resolveStationStreamUrl(station).then(function (resolvedStreamUrl) {
+    var stationUri = station.uri || (STATION_URI_PREFIX + station.id);
     var track = {
-      service: PLUGIN_NAME,
+      service: 'mpd',
       type: 'track',
-      uri: station.uri || (STATION_URI_PREFIX + station.id),
+      stationUri: stationUri,
+      trackType: 'webradio',
+      duration: 0,
+      isStreaming: true,
+      album: station.name,
+      artist: station.name,
+      uri: resolvedStreamUrl,
       realUri: resolvedStreamUrl,
       path: resolvedStreamUrl,
       name: station.name,
@@ -480,7 +488,8 @@ KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
   }
 
   var self = this;
-  var serviceName = PLUGIN_NAME;
+  var serviceName = typeof playTrack.service === 'string' && playTrack.service.length > 0 ? playTrack.service : PLUGIN_NAME;
+  var syncService = serviceName === PLUGIN_NAME || serviceName === WEBRADIO_SERVICE ? 'mpd' : serviceName;
 
   return self._preparePlayTrackForPlayback(playTrack)
     .then(function (preparedTrack) {
@@ -515,12 +524,38 @@ KoreanRadioAlarm.prototype.clearAddPlayTrack = function (track) {
           return true;
         }
 
-        state.service = serviceName;
+        state.service = syncService;
         state.title = playTrack.name || playTrack.title || state.title;
-        state.uri = playTrack.realUri || playTrack.uri || state.uri;
-        state.path = playTrack.realUri || state.path;
+        if (syncService === 'mpd') {
+          state.uri = playTrack.realUri || playTrack.uri || state.uri;
+        } else {
+          state.uri = playTrack.uri || playTrack.realUri || state.uri;
+        }
+        state.path = playTrack.realUri || playTrack.path || state.path;
+        state.trackType = playTrack.trackType || 'webradio';
+        state.isStreaming = playTrack.isStreaming !== undefined ? playTrack.isStreaming : true;
+        state.duration = typeof playTrack.duration === 'number' ? playTrack.duration : 0;
+        if (playTrack.stationUri) {
+          state.stationUri = playTrack.stationUri;
+        } else if (playTrack.pluginUri) {
+          state.stationUri = playTrack.pluginUri;
+        } else if (typeof playTrack.uri === 'string' && playTrack.uri.indexOf(SOURCE_URI) === 0) {
+          state.stationUri = playTrack.uri;
+        }
 
-        return callPluginMethod(self.commandRouter.stateMachine, 'syncState', [state, serviceName]);
+        if (playTrack.pluginUri) {
+          state.pluginUri = playTrack.pluginUri;
+        } else if (playTrack.stationUri) {
+          state.pluginUri = playTrack.stationUri;
+        }
+        if (!state.album) {
+          state.album = playTrack.album || playTrack.name;
+        }
+        if (!state.artist) {
+          state.artist = playTrack.artist || playTrack.name;
+        }
+
+        return callPluginMethod(self.commandRouter.stateMachine, 'syncState', [state, syncService]);
       });
     });
 };
@@ -830,6 +865,10 @@ KoreanRadioAlarm.prototype._buildGroupNavigation = function (groupId) {
     var item = {
       service: PLUGIN_NAME,
       type: 'song',
+      stationUri: STATION_URI_PREFIX + station.id,
+      trackType: 'webradio',
+      duration: 0,
+      isStreaming: true,
       title: station.name,
       album: target.name || target.id,
       artist: target.name || target.id,

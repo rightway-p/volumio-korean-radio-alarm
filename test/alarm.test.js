@@ -199,9 +199,17 @@ test('handleBrowseUri and explodeUri stay consistent with station option URIs', 
 
   assert.strictEqual(Array.isArray(tracks), true);
   assert.strictEqual(tracks.length, 1);
-  assert.strictEqual(tracks[0].uri, option.value);
+  assert.strictEqual(tracks[0].uri, 'https://example.com/stream');
+  assert.strictEqual(tracks[0].service, 'mpd');
+  assert.strictEqual(tracks[0].stationUri, option.value);
+  assert.strictEqual(tracks[0].trackType, 'webradio');
+  assert.strictEqual(tracks[0].duration, 0);
   assert.strictEqual(root.navigation.prev.uri, SOURCE_URI);
   assert.strictEqual(groupNavigation.navigation.lists[0].items[0].uri, option.value);
+  assert.strictEqual(groupNavigation.navigation.lists[0].items[0].service, 'korean_radio_alarm');
+  assert.strictEqual(groupNavigation.navigation.lists[0].items[0].trackType, 'webradio');
+  assert.strictEqual(groupNavigation.navigation.lists[0].items[0].duration, 0);
+  assert.strictEqual(groupNavigation.navigation.lists[0].items[0].realUri, 'https://example.com/stream');
   assert.strictEqual(groupNavigation.navigation.prev.uri, SOURCE_URI);
   assert.strictEqual(option.value, STATION_URI_PREFIX + 'classic');
 });
@@ -240,6 +248,14 @@ test('explodeUri resolves dynamic streamResolver urls before playback', async ()
   };
 
   var tracks = await plugin.explodeUri(STATION_URI_PREFIX + 'world-radio');
+  assert.strictEqual(tracks[0].service, 'mpd');
+  assert.strictEqual(tracks[0].trackType, 'webradio');
+  assert.strictEqual(tracks[0].duration, 0);
+  assert.strictEqual(tracks[0].isStreaming, true);
+  assert.strictEqual(tracks[0].album, 'KBS World Radio');
+  assert.strictEqual(tracks[0].artist, 'KBS World Radio');
+  assert.strictEqual(tracks[0].stationUri, STATION_URI_PREFIX + 'world-radio');
+  assert.strictEqual(tracks[0].uri, 'https://kbs-world.live/playlist.m3u8');
   assert.strictEqual(tracks[0].realUri, 'https://kbs-world.live/playlist.m3u8');
   assert.strictEqual(tracks[0].path, 'https://kbs-world.live/playlist.m3u8');
 });
@@ -309,7 +325,7 @@ test('findStationByUri resolves both direct ids and uri values', () => {
   assert.strictEqual(missing, null);
 });
 
-test('clearAddPlayTrack passes plugin service and metadata to stateMachine.syncState', async () => {
+test('clearAddPlayTrack aligns stream-track metadata to mpd stateMachine.syncState', async () => {
   var plugin = createPlugin({
     addToBrowseSources: function () {},
     volumioSetVolume: function () {}
@@ -364,12 +380,16 @@ test('clearAddPlayTrack passes plugin service and metadata to stateMachine.syncS
 
   assert.strictEqual(mpdCalls.length, 4);
   assert.strictEqual(syncStateCalls.length, 1);
-  assert.strictEqual(syncStateCalls[0][1], 'korean_radio_alarm');
-  assert.strictEqual(syncStateCalls[0][0].service, 'korean_radio_alarm');
+  assert.strictEqual(syncStateCalls[0][1], 'mpd');
+  assert.strictEqual(syncStateCalls[0][0].service, 'mpd');
   assert.strictEqual(syncStateCalls[0][0].uri, 'https://radio.example.com/stream');
   assert.strictEqual(syncStateCalls[0][0].title, 'KBS Classic FM');
   assert.strictEqual(syncStateCalls[0][0].path, 'https://radio.example.com/stream');
+  assert.strictEqual(syncStateCalls[0][0].stationUri, 'korean_radio_alarm://station/classic');
   assert.strictEqual(syncStateCalls[0][0].status, 'playing');
+  assert.strictEqual(syncStateCalls[0][0].isStreaming, true);
+  assert.strictEqual(syncStateCalls[0][0].trackType, 'webradio');
+  assert.strictEqual(syncStateCalls[0][0].duration, 0);
 });
 
 test('clearAddPlayTrack resolves dynamic station uri before MPD add', async () => {
@@ -453,7 +473,12 @@ test('clearAddPlayTrack resolves dynamic station uri before MPD add', async () =
   assert.strictEqual(syncStateCalls[0][0].uri, 'https://kbs-world.live/playlist.m3u8');
   assert.strictEqual(syncStateCalls[0][0].path, 'https://kbs-world.live/playlist.m3u8');
   assert.strictEqual(syncStateCalls[0][0].title, 'KBS World Radio');
-  assert.strictEqual(syncStateCalls[0][0].service, 'korean_radio_alarm');
+  assert.strictEqual(syncStateCalls[0][0].service, 'mpd');
+  assert.strictEqual(syncStateCalls[0][0].stationUri, STATION_URI_PREFIX + 'world-radio');
+  assert.strictEqual(syncStateCalls[0][0].isStreaming, true);
+  assert.strictEqual(syncStateCalls[0][0].trackType, 'webradio');
+  assert.strictEqual(syncStateCalls[0][0].duration, 0);
+  assert.strictEqual(syncStateCalls[0][1], 'mpd');
 });
 
 test('clearAddPlayTrack uses realUri when uri is missing', async () => {
@@ -512,4 +537,9 @@ test('clearAddPlayTrack uses realUri when uri is missing', async () => {
   assert.strictEqual(syncStateCalls[0][0].uri, 'https://direct.example.com/stream');
   assert.strictEqual(syncStateCalls[0][0].path, 'https://direct.example.com/stream');
   assert.strictEqual(syncStateCalls[0][0].title, 'Direct');
+  assert.strictEqual(syncStateCalls[0][0].service, 'mpd');
+  assert.strictEqual(syncStateCalls[0][1], 'mpd');
+  assert.strictEqual(syncStateCalls[0][0].isStreaming, true);
+  assert.strictEqual(syncStateCalls[0][0].trackType, 'webradio');
+  assert.strictEqual(syncStateCalls[0][0].duration, 0);
 });
